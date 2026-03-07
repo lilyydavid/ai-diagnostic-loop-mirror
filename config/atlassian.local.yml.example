@@ -1,0 +1,27 @@
+# LOCAL OVERRIDE — copy to atlassian.local.yml (git-ignored)
+# Values here override config/atlassian.yml and config/atlassian.team.yml.
+# Use this for personal Jira boards, test epics, sandbox Confluence pages, and secrets.
+
+# Teams incoming webhook (required for Teams notifications)
+# teams:
+#   enabled: true
+#   webhook_url: "https://sephora.webhook.office.com/webhookb2/YOUR_WEBHOOK_URL"
+
+# Example: point growth agent at a personal test epic
+# growth_agent:
+#   jira_project_key: "BAAPP"
+#   epic_key: "BAAPP-999"
+#   epic_summary: "My test epic"
+
+# Example: write funnel reports to a personal Confluence page
+# funnel_monitor_page_id: "YOUR_PAGE_ID"
+
+# Example: add an extra research source for validation agent
+# validation:
+#   research_sources:
+#     - space_key: "SEA"
+#       page_id: "63975620619"
+#       label: "UX Research Repository"
+#     - space_key: "PI"
+#       page_id: "YOUR_PAGE_ID"
+#       label: "Additional research"

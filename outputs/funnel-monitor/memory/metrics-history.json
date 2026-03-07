@@ -1,0 +1,31 @@
+{
+  "weeks": [
+    {
+      "week": "2026-W09",
+      "period": "2026-02-25/2026-03-03",
+      "generated": "2026-03-05",
+      "leverage_actions": [
+        "L1: Investigate cart-to-checkout drop",
+        "L2: Build payment retry flow",
+        "L3: Audit address completion drop-off",
+        "L4: Checkout success rate war room"
+      ],
+      "metrics": {
+        "sessions_week": 3352617,
+        "app_engagement_rate": 0.2753,
+        "search_cvr_combined": 0.031,
+        "pdp_view_rate_combined": 2.28,
+        "share_pdp_nonlanding": 0.337,
+        "atc_rate_combined": 0.194,
+        "cart_to_checkout_ctr_combined": 0.1709,
+        "checkout_success_rate_combined": 0.3925,
+        "aov_combined": 58.76,
+        "payment_failure_rate": 0.1109,
+        "address_completion_rate": 0.5863,
+        "cnc_pct_ecomm": 0.0751,
+        "orders_shipped_rate": 0.9434,
+        "orders_ontime_rate": 0.9493
+      }
+    }
+  ]
+}

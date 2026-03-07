@@ -1,0 +1,100 @@
+# Atlassian MCP configuration — GLOBAL DEFAULTS
+# Override per level: config/atlassian.local.yml > config/atlassian.team.yml > this file
+# Local file is git-ignored. Team file is committed but team-scoped.
+
+mcp_path: "/path/to/atlassian/mcp"
+space_name: "PI"
+
+# Confluence write targets
+page_id: "64742785027"
+funnel_monitor_page_id: "64742948865"
+domo_embed_page_id: "64742228008"
+
+# Domo — funnel metrics source
+# funnel_page_id: Domo page ID for the weekly funnel dashboard (used by funnel-monitor agent)
+# Override in atlassian.local.yml or atlassian.team.yml for a different dashboard.
+domo:
+  host: "https://sephora-sg.domo.com"
+  funnel_page_id: "391829894"
+
+# Growth agent — Jira targets
+# Stories are created as children of the epic below.
+# Override in atlassian.local.yml or atlassian.team.yml for a different epic.
+growth_agent:
+  jira_project_key: "BAAPP"
+  epic_key: "BAAPP-461"
+  epic_summary: "Growth Agent tasks"
+  story_labels:
+    - "growth-agent"
+    - "quick-win"
+  backlog_label: "growth-backlog"
+  screenshot_watch_folder: ".claude/tmp-screenshots/funnel-weekly"
+
+# GitHub repos the growth agent reads (sephora-asia org)
+# always_read: scanned on every run
+# conditional: scanned only when hypothesis code_area matches
+github:
+  org: "sephora-asia"
+  always_read:
+    - "sea-web-app"
+    - "web-ui"
+    - "luxola"
+  conditional:
+    cart: "sea-cart-ms"
+    payment: "sea-payment-ms"
+    order: "sea-order-ms"
+    catalogue: "catalogue-service"
+    auth: "sea-auth-ms"
+    promotion: "sea-promotion-ms"
+
+# Teams notifications
+# Webhook URL must be set in config/atlassian.local.yml (git-ignored) — never commit it.
+# To create: Teams channel → ... → Connectors → Incoming Webhook → Create → copy URL.
+teams:
+  enabled: false                  # set to true in atlassian.local.yml once webhook is configured
+  webhook_url: ""                 # set in atlassian.local.yml
+  notify_on:
+    - gate_1                      # end of Week 1 — hypotheses ready for review
+    - gate_2                      # end of Week 2 — sprint candidates ready for approval
+    - week_3_complete             # cycle closed — Jira tickets created
+
+# Validation agent — Confluence research sources
+# The validation agent searches these spaces/pages for user research evidence.
+# Override in atlassian.local.yml or atlassian.team.yml to add/swap research sources.
+validation:
+  research_sources:
+    - space_key: "SEA"
+      page_id: "63975620619"
+      label: "UX Research Repository"
+      url: "https://sephora-asia.atlassian.net/wiki/spaces/SEA/pages/63975620619/UX+Research+Repository"
+
+# Market intel — search targets for SEA ecommerce signals
+market_intel:
+  brand: "Sephora"
+  region: "Southeast Asia"
+  markets:
+    - "Singapore"
+    - "Malaysia"
+    - "Thailand"
+    - "Indonesia"
+    - "Philippines"
+  competitors:
+    - "Watsons"
+    - "Guardian"
+    - "LOOKFANTASTIC"
+    - "Lazada Beauty"
+    - "Shopee Beauty"
+    - "Sasa"
+  social_channels:
+    - "Reddit"
+    - "Facebook"
+    - "TikTok"
+    - "YouTube"
+    - "beauty forums"
+  categories:
+    - "beauty ecommerce"
+    - "skincare"
+    - "makeup"
+    - "checkout friction"
+    - "loyalty rewards"
+    - "app experience"

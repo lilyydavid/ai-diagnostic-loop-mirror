@@ -1,0 +1,17 @@
+{
+  "cycle_month": "2026-03",
+  "current_phase": "validation",
+  "discovery_completed": "2026-03-06",
+  "discovery_hypotheses_count": 4,
+  "approved_hypotheses": [
+    "H1 — Cart-to-checkout drop caused by stackable promotions launch",
+    "H2 — Payment failure recovery gap",
+    "H3 — Address completion friction at postcode lookup"
+  ],
+  "validation_completed": null,
+  "validation_count": 0,
+  "sprint_candidates": [],
+  "backlog_candidates": [],
+  "delivery_completed": null,
+  "tickets_created": []
+}

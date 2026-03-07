@@ -1,0 +1,29 @@
+# SSH keys
+*.pem
+*.key
+id_rsa
+id_rsa.pub
+id_ed25519
+id_ed25519.pub
+
+# MCP config (may contain credentials)
+.mcp.json
+
+# macOS
+.DS_Store
+
+# Environment / secrets
+.env
+.env.*
+*.secret
+
+# Local config overrides (may contain personal page IDs or epic keys)
+config/atlassian.local.yml
+config/atlassian.team.yml
+
+# Screenshot watch folder — contents are transient (deleted after processing)
+inputs/screenshots/*.png
+inputs/screenshots/*.jpg
+inputs/screenshots/*.jpeg
+inputs/screenshots/*.gif
+inputs/screenshots/*.webp

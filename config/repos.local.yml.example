@@ -1,0 +1,12 @@
+# Local repo paths — EXAMPLE FILE
+# Copy to config/repos.local.yml and fill in your clone locations.
+# repos.local.yml is git-ignored — never commit it.
+
+repos:
+  sea-web-app: "/Users/yourname/dev/sea-web-app"
+  sea-cart-ms: "/Users/yourname/dev/sea-cart-ms"
+  sea-payment-ms: "/Users/yourname/dev/sea-payment-ms"
+  sea-auth-ms: "/Users/yourname/dev/sea-auth-ms"
+  sea-promotion-ms: "/Users/yourname/dev/sea-promotion-ms"
+  catalogue-service: "/Users/yourname/dev/catalogue-service"
+  luxola: "/Users/yourname/dev/luxola"

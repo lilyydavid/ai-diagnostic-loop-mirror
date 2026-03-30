@@ -9,6 +9,7 @@ space_name: "PI"
 page_id: "64742785027"
 funnel_monitor_page_id: "64742948865"
 domo_embed_page_id: "64742228008"
+feedback_findings_page_id: "64760119298"    # "Cross references" — Intelligence Loop Step 2a output
 
 # Domo — funnel metrics source
 # funnel_page_id: Domo page ID for the weekly funnel dashboard (used by funnel-monitor agent)
@@ -58,15 +59,40 @@ teams:
     - gate_2                      # end of Week 2 — sprint candidates ready for approval
     - week_3_complete             # cycle closed — Jira tickets created
 
-# Validation agent — Confluence research sources
-# The validation agent searches these spaces/pages for user research evidence.
-# Override in atlassian.local.yml or atlassian.team.yml to add/swap research sources.
+# Validation agent — local repo paths for codebase survey
+# Agent 12 reads these repos using local file system tools (Read/Grep/Glob).
+# Set local_path to wherever you have cloned each repo.
+# Override in atlassian.local.yml for personal clone locations.
 validation:
-  research_sources:
-    - space_key: "SEA"
-      page_id: "63975620619"
-      label: "UX Research Repository"
-      url: "https://sephora-asia.atlassian.net/wiki/spaces/SEA/pages/63975620619/UX+Research+Repository"
+  repos:
+    - name: "sea-web-app"
+      local_path: "/path/to/sea-web-app"
+      type: "frontend"
+      keywords: ["ATC", "PDP", "search", "catalogue"]
+    - name: "luxola"
+      local_path: "/path/to/luxola"
+      type: "backend"
+      keywords: ["checkout", "payment", "order"]
+    - name: "sea-cart-ms"
+      local_path: "/path/to/sea-cart-ms"
+      type: "backend"
+      keywords: ["ATC", "cart", "basket"]
+    - name: "sea-payment-ms"
+      local_path: "/path/to/sea-payment-ms"
+      type: "backend"
+      keywords: ["checkout", "payment", "promo", "voucher"]
+    - name: "sea-auth-ms"
+      local_path: "/path/to/sea-auth-ms"
+      type: "backend"
+      keywords: ["sign-in", "auth", "login", "OTP", "session"]
+    - name: "sea-promotion-ms"
+      local_path: "/path/to/sea-promotion-ms"
+      type: "backend"
+      keywords: ["loyalty", "points", "rewards", "promo"]
+    - name: "catalogue-service"
+      local_path: "/path/to/catalogue-service"
+      type: "backend"
+      keywords: ["PDP", "product", "catalogue", "stock", "availability", "search"]
 
 # Market intel — search targets for SEA ecommerce signals
 market_intel:

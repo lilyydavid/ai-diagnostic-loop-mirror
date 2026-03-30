@@ -1,0 +1,317 @@
+# Domo MCP registry — GLOBAL DEFAULTS
+# Override per level: config/domo.local.yml > this file
+# Local file is git-ignored. Never hardcode IDs in agent logic.
+# New dataset/page/card IDs require human approval before first query (FR30).
+
+host: "sephora-sg.domo.com"
+
+# ──────────────────────────────────────────
+# Access control — STRICT
+# Agent may ONLY query sources explicitly registered in this file.
+# Any card, page, dataset, or table not listed below is off-limits.
+# Attempting to access an unregistered ID is a hard error — surface to PM, do not proceed.
+# New sources require entry in this file + approved: true before first query (FR30).
+# ──────────────────────────────────────────
+access_control: strict
+
+# ──────────────────────────────────────────
+# OAuth scope rules (enforced per call type)
+#   datasets → scope: data
+#   pages    → scope: dashboard
+#   cards    → scope: dashboard
+# ──────────────────────────────────────────
+
+# ──────────────────────────────────────────
+# KPI Signal sources (Step 1 — 10-signal-agent)
+#
+# Provide ANY combination of datasets, pages, or cards.
+# At least one source is required. All three are optional.
+#
+#   datasets → raw query via SQL, OAuth scope: data
+#   pages    → pre-aggregated dashboard read via /v1/pages/{id}, OAuth scope: dashboard
+#   cards    → individual KPI card read via /v1/cards/{id}, OAuth scope: dashboard
+#
+# Add entries to whichever source(s) you have. Leave unused sections empty ([]).
+# New IDs require human approval — set approved: true after review (FR30).
+# ──────────────────────────────────────────
+
+# ──────────────────────────────────────────
+# kpi_datasets — grouped by domain
+#
+# metrics: auto-populated by agent on first query (SELECT * LIMIT 1 schema discovery).
+#   columns_discovered: false → agent runs discovery and writes columns back here.
+#   columns_discovered: true  → agent uses listed columns directly; no discovery call.
+#
+# To add a new dataset: set columns_discovered: false, metrics: []
+# ──────────────────────────────────────────
+
+kpi_datasets:
+
+  satisfaction:
+    - id: "e76f6c94-d0be-4888-9726-125bbfb9a95d"
+      name: "Love Meter / NPS"
+      date_column: "created_at"
+      country_column: "country"        # full country name e.g. 'Australia', not 'AU'
+      approved: true
+      columns_discovered: true
+      metrics: ["rating", "suggestion"]
+
+  sessions:
+    - id: "29a01e0e-8ef8-476b-bdff-4090f1941e7f"
+      name: "Domain KPI — by session"
+      date_column: "date"
+      approved: true
+      columns_discovered: true
+      dimensions: ["traffic_channel_lv1","traffic_channel_lv2","traffic_channel_lv3"]
+      metrics: ["journey_sessions","sessions_with_homepage_views","sessions_with_pdp_views","sessions_with_cart_views","sessions_with_orders","hp_sessions","pdp_sessions","cart_sessions","order_sessions","atc_sessions","pdp_atc_sessions","hp_to_pdp_sessions","pdp_to_cart_sessions","cart_to_order_sessions"]
+
+  funnel:
+    - id: "e033e59a-d5d2-4141-96e1-d8971771c54e"
+      name: "Cart to Checkout Funnel"
+      covers: "Cart-to-Checkout CTR, Checkout Success Rate, Payment Failure Rate, Sign-in to Checkout, Checkout Funnel (Web+App)"
+      date_column: "date_local"        # actual column name — NOT "date"
+      approved: true
+      columns_discovered: true
+      metrics: ["is_guest_order","has_reached_cart","has_clicked_secure_checkout","has_started_sign_in","has_finished_sign_in","has_finished_shipping_type","has_finished_shipping_details","has_finished_shipping_method","has_finished_gift_option","has_finished_payment_methods","has_reached_confirmation_page","is_order_validated","has_clicked_place_order","clicked_applepay_cart_checkout","success_applepay_cart_checkout","clicked_applepay_pdp_checkout","success_applepay_pdp_checkout"]
+    - id: "46ef93fa-d36e-4ba3-b273-731ba666287a"
+      name: "Cart to Checkout Funnel (User Level)"
+      covers: "Cart-to-Checkout CTR (User Level)"
+      date_column: "date_local_default"  # actual column name — NOT "date"
+      approved: true
+      columns_discovered: true
+      metrics: ["is_guest_order","has_reached_cart","has_clicked_secure_checkout","has_started_sign_in","has_finished_sign_in","has_finished_shipping_type","has_finished_shipping_details","has_finished_shipping_method","has_finished_gift_option","has_finished_payment_methods","has_clicked_place_order","clicked_applepay_cart_checkout","success_applepay_cart_checkout","clicked_applepay_pdp_checkout","success_applepay_pdp_checkout","has_reached_confirmation_page","is_order_validated"]
+    - id: "843ee8fc-6041-4a2d-b9b4-50752e7567d8"
+      name: "ATC Rate (User Level)"
+      covers: "Add-to-Cart Rate (User Level)"
+      date_column: "year_month"          # actual column name — NOT "date"; monthly granularity
+      approved: true
+      columns_discovered: true
+      # NOTE: the flag columns (viewed_hp, viewed_pdp, added_to_cart etc.) are 0/1 cohort keys — do NOT sum these.
+      # The cookie_with_* columns (cookie_with_hp_view, cookie_with_pdp, cookie_with_atc, cookie_with_cart, cookie_with_order)
+      # and total_cookies ARE raw user counts — safe to SUM grouped by country + device for a full user-level funnel.
+      # Query: SELECT country, device, SUM(total_cookies), SUM(cookie_with_hp_view), SUM(cookie_with_pdp),
+      #   SUM(cookie_with_atc), SUM(cookie_with_cart), SUM(cookie_with_order) GROUP BY country, device
+      # Use Domain KPI by Session (29a01e0e) for session-level ATC rates instead.
+      # Order tracking (cookie_with_order) is incomplete for ID, TH, PH, MY — use 46ef93fa for order completion rates.
+      metrics: ["identified","viewed_hp","viewed_pdp","added_to_cart","viewed_cart","placed_order","hp_assisted_pdp","total_cookies","total_sessions","cookie_with_atc","cookie_with_pdp","cookie_with_cart","cookie_with_order","cookie_with_hp_view","cookie_with_hp_assisted_pdp","cookie_with_pdp_atc","total_atc","total_pdp","total_atc_on_pdp","total_cart_views","total_orders","total_revenue"]
+
+  engagement:
+    - id: "0c0f34eb-c85a-4047-82f5-ad9c464ea9a1"
+      name: "Engaged User Trend"
+      date_column: "week"               # actual column name — NOT "date"; weekly granularity
+      approved: true
+      columns_discovered: true
+      metrics: ["engaged_sessions","lw_engaged_sessions","total_sessions","lw_total_sessions","total_users","lw_total_users","engaged_users","lw_engaged_users"]
+    - id: "f8cc4b91-466d-4cdf-9e0a-3d6eb4bb535f"
+      name: "Bounce Rate"
+      covers: "Bounce Rates Weekly YoY"
+      date_column: "date"
+      approved: true
+      columns_discovered: true
+      metrics: ["sessions","bounce"]
+
+  discovery:
+    - id: "2821f177-8504-4f01-9f2d-590291922b66"
+      name: "Product Discovery by Carousel"
+      date_column: "date"
+      approved: true
+      columns_discovered: true
+      metrics: ["clicks"]
+    - id: "997f496f-9154-4f32-b746-8615261ad764"
+      name: "Search Terms"
+      covers: "All Search Terms"
+      date_column: "date_local"         # actual column name — NOT "date"
+      approved: true
+      columns_discovered: true
+      metrics: ["frequency","total_revenue","total_orders"]
+
+  identity:
+    - id: "793bbfbb-ac3e-4812-b56c-73301ceca135"
+      name: "Sign Up & Sign In (User Level)"
+      covers: "Signed In Rate, Identification Rate, Sign Up Success Rate, Signed-in All Sessions"
+      date_column: "date"
+      approved: true
+      columns_discovered: false        # BLOCKED: filter group permission — user not in group
+      metrics: []
+
+  omnichannel:
+    - id: "69eeb68a-e7fd-48fa-bb4b-57c3557aa702"
+      name: "Brick & Mortar Revenue with Digital Touchpoint and Exact Product Match"
+      covers: "Offline revenue influenced by digital touchpoints; used for validation of digital-to-physical attribution"
+      date_column: "transaction_date"    # actual column name — NOT "date"
+      approved: true
+      columns_discovered: true
+      # NOTE: web_app only has two values — "mobile" (digital touchpoint) and "" (no touchpoint).
+      # No web-to-in-store tracking. digital_touchpoint flag is 1 for all mobile rows, 0 for all "" rows.
+      # cardNumber column present — PII, exclude from all SELECT queries.
+      # H3 validation (2026-03-13): mobile-to-in-store rate AU=2.9%, SG=5.3%, MY=5.8% — below/at 5% threshold.
+      metrics: ["transaction_date","store_code","country","place_name","same_item_searched","productId","web_app","brand_name","digital_touchpoint","declaration_id","category_id","brandid","store_name","product_name_en","place_code","real_amount_currency","sku_mapping"]
+
+  experiments:
+    - id: "d28b9415-ecfe-4958-9541-dbec6f0e7894"
+      name: "Elixir A/B Test"
+      date_column: "log_date"
+      country_column: "country"          # lowercase ISO code: au, sg, my, id, th, ph, hk, nz
+      approved: true
+      columns_discovered: true
+      # Dimensions: model_name, country, operating_system (ios/android/web/mweb), offer_mechanic, offer_category, first_touchpoint
+      # Models observed: lightgbm (active Dec–Jan, ramped off Feb), neural_bandit (ramped on Jan, active Feb–Mar), original_offers (control, full period)
+      metrics: ["impression_count","click_count","redemption_count","orders_with_offers_count","order_revenue_with_offers","unique_customer_count","offer_mechanic","offer_category","offer_id","offer_name","first_touchpoint"]
+
+  TAM:
+    - id: "82a39890-1054-4116-9a1f-125659fde53e"
+      name: "TAM Trend"
+      date_column: "date"
+      approved: true
+      columns_discovered: true
+      # NOTE: dataset has 3 duplicate rows per country/month — use DISTINCT or divide by 3 when aggregating
+      metrics: ["total_members","l12m_spend_eur","l12m_txns","l12m_online_txns","l12m_online_spend_eur","l12m_retail_txns","l12m_retail_spend_eur","total_members_ly","l12m_txns_ly","l12m_spend_eur_ly","l12m_online_txns_ly","l12m_retail_txns_ly","l12m_online_spend_eur_ly","l12m_retail_spend_eur_ly","current","tam_target"]
+
+kpi_pages:
+  - id: "391829894"
+    name: "Domain KPI Dashboard"
+    url: "https://sephora-sg.domo.com/page/391829894"
+    discover_cards: true           # agent reads ALL cards on this page automatically
+    approved: true                 # new cards on an approved page are included without re-approval
+  # - id: "REPLACE_WITH_PAGE_ID"
+  #   name: "..."
+  #   discover_cards: false        # set true to auto-read all cards; false = registered cards only
+  #   approved: false
+
+kpi_cards: []
+  # - id: "REPLACE_WITH_CARD_ID"
+  #   name: "..."
+  #   approved: false
+
+# ──────────────────────────────────────────
+# Feedback datasets (Step 2a — 11-feedback-agent)
+# Queried for triangulation evidence. Aggregation-first. No PII.
+# OAuth scope: data (datasets) / dashboard (cards)
+#
+# discover_cards is NOT used here — feedback sources are intentional.
+# New feedback cards/datasets require explicit registration + approval (FR30).
+# ──────────────────────────────────────────
+feedback_datasets:
+
+  app_reviews:
+    - id: "901f1019-a2f0-4a55-a36e-6cbd7c875c9e"
+      name: "App Store Reviews"
+      source_type: dataset             # SQL-queryable, OAuth scope: data
+      approved: true
+      columns_discovered: true
+      date_column: "date_created"
+      country_column: "country_name"   # full country name e.g. 'Australia', not 'AU'
+      # NOTE: user_id column present — PM-approved for use in this dataset (not PII in context)
+      metrics: ["rating", "topic", "platform", "app_version", "description", "device_model", "type"]
+
+  love_meter:
+    - id: "1308353640"
+      name: "Love Meter / NPS"
+      source_type: card                # accessed via /v1/cards/{id}, OAuth scope: dashboard
+      url: "https://sephora-sg.domo.com/kpis/details/1308353640"
+      approved: true
+    - id: "1948459407"
+      name: "Love Meter / NPS (page view)"
+      source_type: card
+      page_id: "515305475"             # parent page containing this card
+      url: "https://sephora-sg.domo.com/page/515305475/kpis/details/1948459407"
+      approved: true
+    - id: "1972172575"
+      name: "Love Meter / NPS (online)"
+      source_type: card
+      url: "https://sephora-sg.domo.com/kpis/details/1972172575"
+      approved: true
+
+  cs_tickets:
+    - id: "369925860"
+      name: "Customer Service Tickets"
+      source_type: card
+      page_id: "515305475"
+      url: "https://sephora-sg.domo.com/page/515305475/kpis/details/369925860"
+      approved: true
+
+# ──────────────────────────────────────────
+# PII exclusion list (enforced at SQL SELECT layer)
+# Schema verification checks for these column names before any query.
+# Query halts if any are detected. (FR11, FR12, NFR5, NFR6)
+# ──────────────────────────────────────────
+pii_excluded_columns:
+  - user_id
+  - card_number
+  - payment_details
+  - address
+  - password
+  - login
+  - username
+  - email
+  - phone
+  - name
+  - first_name
+  - last_name
+  - full_name
+
+# ──────────────────────────────────────────
+# Query time windows (PM-controlled guardrail)
+# Every dataset and card query MUST include a date range — no unbounded queries.
+# Agent uses these windows to construct the date filter before executing any call.
+# Override per-source by adding a query_window_days field on the source entry.
+# ──────────────────────────────────────────
+query_windows:
+  kpi_pages: 28          # 4 full weeks — sharp WoW signal without dilution from older data
+  kpi_cards: 28
+  kpi_datasets: 28
+  app_reviews: 30        # captures feedback from last 1-2 app releases
+  love_meter: 60         # NPS runs less frequently; 2 months for sufficient response volume
+  cs_tickets: 14         # high volume — 2 weeks is sufficient for current trend detection
+  default: 28            # fallback
+
+# ──────────────────────────────────────────
+# Loop thresholds (FR3, FR9, FR10, FR31)
+# ──────────────────────────────────────────
+thresholds:
+
+  # Staleness: re-query feedback sources if findings older than N days
+  findings_staleness_days: 7
+
+  # Signal thresholds — per metric type (% movement to trigger hypothesis formation)
+  # Tune these based on observed baseline volatility per KPI.
+  signal_threshold_pct:
+    default: 10                    # fallback if metric type not listed below
+    conversion_rate: 5             # checkout CVR, ATC rate — small moves matter
+    sessions: 15                   # sessions have higher day-to-day variance
+    revenue: 10                    # AOV, GMV
+    nps_score: 5                   # NPS shifts are meaningful even at low magnitude
+    ratings: 0.2                   # app store rating (absolute, not %)
+
+  # Suspicious metrics — surface to PM, never auto-suppress
+  # Agent flags these for PM review; loop continues with flagged note.
+  suspicious_metric:
+    yoy_flag_pct: 50               # flag if YoY movement exceeds this %
+    flag_zero_values: true         # flag metrics with value exactly 0%
+    flag_identical_segments: true  # flag if value is identical across all segments
+    action: surface_to_pm          # always surface, never suppress
+
+  # Verbatim sampling — per feedback source type
+  # Max rows sampled from text fields before passing to LLM (aggregation-first).
+  verbatim_sample_max:
+    default: 20
+    app_reviews: 40                # higher volume; filter inauthentic before sampling
+    cs_tickets: 60                 # high volume, diverse issue types
+    love_meter: 20
+    skincredible: 20
+
+  # App review authenticity filter
+  # Applied before verbatim sampling — excludes reviews likely to be inauthentic.
+  # Inauthentic signals: very short text, generic phrases, extreme rating with no text.
+  app_review_authenticity:
+    min_text_length: 20            # exclude reviews shorter than N characters
+    exclude_ratings_without_text: true   # exclude 1★ or 5★ with no review body
+    exclude_generic_phrases:       # exact-match exclusion list (case-insensitive)
+      - "good app"
+      - "great app"
+      - "nice app"
+      - "best app"
+      - "love it"
+      - "hate it"
+      - "ok"
+      - "okay"

@@ -28,8 +28,12 @@ config/repos.local.yml
 node_modules/
 package-lock.json
 
-# Agent run outputs — operational data, not source
-outputs/
+# Agent run outputs — operational data, not source; preserve directory structure
+outputs/**
+!outputs/*/
+!outputs/*/*/
+!outputs/*/.gitkeep
+!outputs/*/*/.gitkeep
 
 # domo-mcp-server — source is tracked; exclude build artifacts and dependencies
 domo-mcp-server/dist/
@@ -44,3 +48,9 @@ __pycache__/
 .claude/tmp-screenshots/
 .tmp/
 *.log
+
+# Personal Claude settings
+.claude/settings.local.json
+
+# BMAD generated planning artifacts — regenerate from source
+_bmad-output/

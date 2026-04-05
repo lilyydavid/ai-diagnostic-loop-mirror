@@ -1,4 +1,20 @@
-# /inspiration-loop — Inspiration Scout (Agent 20)
+# 20-inspiration-scout — Inspiration Scout
+
+> **Entry point.** Load [POLICY.md](POLICY.md) for output contracts, permissions, and error handling.
+> Load [PROCEDURE.md](PROCEDURE.md) for step-by-step execution. When resuming a parked run, load PROCEDURE.md and jump to the labelled step.
+
+**Role:** Scouts prototype ideas grounded in the Intelligence Loop diagnosis. Combines diagnosis context + current sephora.com UX + scoped market scan. Facilitates PM Gate 1 (pre-mortem + prototype idea). Produces a bet entry that feeds as optional enrichment to Agent 13.
+
+**Trigger:** `/inspiration-loop` · "run the inspiration loop" · Spawned by inspiration-loop orchestrator
+
+**Inputs:** `outputs/diagnosis/diagnosis.json` (required) · `outputs/signal-agent/signals.md` (optional)
+
+**Outputs:** `outputs/inspiration/signal-brief.md` (overwrite) · `outputs/inspiration/bet-log.json` (append) · `outputs/inspiration/cycle-state.json` (overwrite) · Confluence `Inspiration Brief — YYYY-MM-DD`
+
+**PM gate:** Step 7 — PM must confirm pre-mortem + prototype idea + target metric + odds before outputs are written.
+
+---
+<!-- Full policy and procedure content lives in POLICY.md and PROCEDURE.md. Content below is legacy — superseded. -->
 
 ## Role in pipeline
 
@@ -304,16 +320,20 @@ Advancing to prioritisation...
 
 Target: PI space, `parent_id` from `config/atlassian.yml → page_id`
 Title: `Inspiration Brief — YYYY-MM-DD`
-Tool: `mcp__mcp-atlassian__confluence_create_page` (new page each run — do not overwrite)
+New page per run — do not overwrite prior runs.
 
 **Confluence output rules:**
-- Do NOT include: BET-NNN IDs, PM odds label, "Pre-mortem:" header, signal IDs (S1/S23), dataset codes, agent names, or internal loop terminology
+- Do NOT include: BET-NNN IDs, PM odds label, "Pre-mortem:" header, signal IDs, dataset codes, agent names, or internal loop terminology
 - PM's prototype idea goes verbatim under "What we want to try" — no wrapper language
 - If no market signals were found in Step 5: omit the "What others are doing" section entirely
+- Include a diagnosis anchor link to the Intelligence Loop page if `confluence_page_url` is available in `outputs/prioritisation/ranked-hypotheses.json`
+
+**Write body to `.tmp/inspiration-brief-body.md`:**
 
 ```markdown
-## Signal we're looking at
-{plain-English summary of the KPI signal — metric, direction, market, period. No signal IDs or dataset codes.}
+## Diagnosis context
+{1-sentence plain-English summary of the favored diagnosis from diagnosis.json.
+Link: [Intelligence Loop — {date}]({confluence_page_url from ranked-hypotheses.json, if available — otherwise omit link})}
 
 ## What sephora.com looks like today
 {plain-language description of current UX state in the relevant area.
@@ -328,6 +348,23 @@ If sephora.com was inaccessible: "Current state not observed this run."}
 
 _[date]_
 ```
+
+**Run the script:**
+```bash
+python execution/write_confluence.py \
+  --mode create \
+  --space PI \
+  --parent-id {page_id from config/atlassian.yml} \
+  --title "Inspiration Brief — $(date +%Y-%m-%d)" \
+  --body-file .tmp/inspiration-brief-body.md \
+  --content-format wiki
+```
+
+Parse stdout JSON: record `page_id` and `url` into `outputs/inspiration/signal-brief.md` header.
+
+If script exits non-zero:
+- Exit 1 (401/403): surface auth error to PM, instruct token rotation. Do NOT skip.
+- Exit 2 (400): check title and parent ID; fix and retry once.
 
 ## Output Contract
 

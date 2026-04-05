@@ -1,0 +1,87 @@
+# Agent Registry
+#
+# Single source of truth for agent locations.
+# Claude resolves agent paths from here — never hardcode paths in skills.
+#
+# scope:
+#   shared   — used by more than one project; lives in shared/agents/
+#   project  — used by one project only; lives in projects/{project}/agents/
+#
+# To promote an agent from project to shared:
+#   1. Move the folder: git mv projects/{project}/agents/{id} shared/agents/{id}
+#   2. Update scope and path here
+#   3. Update any project-specific skills that referenced the old path
+
+shared:
+  - id: 13
+    name: prioritisation-agent
+    description: C×I×S scoring, experiment ranking, Jira lineage
+    path: shared/agents/13-prioritisation-agent
+    consumed_by: [intelligence-loop, inspiration-loop]
+
+  - id: 14
+    name: weekly-refresh
+    description: Background findings store refresh
+    path: shared/agents/14-weekly-refresh
+    consumed_by: [intelligence-loop]
+
+projects:
+  intelligence-loop:
+    - id: 10
+      name: signal-agent
+      description: KPI signal from Domo; PM gate
+      path: projects/intelligence-loop/agents/10-signal-agent
+      trigger: /intelligence-loop
+
+    - id: 11
+      name: feedback-agent
+      description: Domo feedback triangulation; diagnosis artifact
+      path: projects/intelligence-loop/agents/11-feedback-agent
+
+    - id: 12
+      name: validation-agent
+      description: Codebase survey; journey mapping; experiment designs
+      path: projects/intelligence-loop/agents/12-validation-agent
+
+    - id: 15
+      name: trend-escalation-agent
+      description: Priority debt tracking; escalation brief
+      path: projects/intelligence-loop/agents/15-trend-escalation-agent
+
+  inspiration-loop:
+    - id: 20
+      name: inspiration-scout
+      description: Signal + frontend browse + market scan; PM Gate 1; bet-log
+      path: projects/inspiration-loop/agents/20-inspiration-scout
+      trigger: /inspiration-loop
+
+  action-layer:
+    - id: 5
+      name: funnel-monitor
+      description: Weekly ecommerce funnel report
+      path: projects/action-layer/agents/05-funnel-monitor
+      trigger: /funnel-monitor
+
+    - id: 6
+      name: market-intel
+      description: SEA web + social scanner
+      path: projects/action-layer/agents/06-market-intel
+      trigger: /market-intel
+
+    - id: 7
+      name: validation
+      description: Confluence research + synthetic user modeling
+      path: projects/action-layer/agents/07-validation
+      trigger: /validate-hypotheses
+
+    - id: 8
+      name: github-reader
+      description: Code context per hypothesis
+      path: projects/action-layer/agents/08-github-reader
+      trigger: /github-reader
+
+    - id: 9
+      name: jira-writer
+      description: Jira story creation
+      path: projects/action-layer/agents/09-jira-writer
+      trigger: /jira-writer

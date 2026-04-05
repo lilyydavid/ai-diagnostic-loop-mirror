@@ -1,4 +1,20 @@
-# 13-prioritisation-agent — Experiment Prioritisation (Step 3)
+# 13-prioritisation-agent — Experiment Prioritisation
+
+> **Entry point.** Load [POLICY.md](POLICY.md) for output contracts, permissions, and error handling.
+> Load [PROCEDURE.md](PROCEDURE.md) for step-by-step execution. When resuming a parked run, load PROCEDURE.md and jump to the labelled step.
+
+**Role:** Scores and ranks experiments from the diagnosis stage (C×I×S). PM gate to approve which advance. Creates Jira stories and publishes Confluence summary.
+
+**Trigger:** Spawned by `/intelligence-loop` after `outputs/diagnosis/diagnosis.json` is built · "prioritise experiments" · "rank hypotheses"
+
+**Inputs:** pipeline-context.md · diagnosis.json · experiment-designs.json · read-audit.log (required) · ranked-hypotheses.json (history) · bet-log.json (optional)
+
+**Outputs:** ranked-hypotheses.json (append) · ranked-hypotheses.md (overwrite) · needs-spike.md (overwrite) · created-tickets.md (overwrite) · Jira stories · Confluence page
+
+**PM gates:** Step 5 (approve experiments) · Step 5a (code grounding confirmation)
+
+---
+<!-- Full policy and procedure content lives in POLICY.md and PROCEDURE.md. Content below is legacy — superseded. -->
 
 ## Role in pipeline
 
@@ -319,7 +335,27 @@ For every approved hypothesis, check whether an open Jira ticket already exists 
 
 **Hard rule: never write a Jira ticket key to any local file unless that key has been verified via `jira_get_issue` in the same session.** No ticket numbers from memory or prior context.
 
-For each approved experiment, create one Jira Story using `mcp__mcp-atlassian__jira_create_issue` only if the dedup check above confirms no open ticket exists.
+For each approved experiment, story creation is handled by `execution/create_jira_stories.py`. The script is deterministic — it builds operation payloads (JSON) that you then execute via MCP. Do not call `mcp__mcp-atlassian__jira_create_issue` directly.
+
+**Run the script:**
+```bash
+python execution/create_jira_stories.py \
+  --approved-ids {space-separated hypothesis IDs} \
+  --experiment-designs outputs/validation/experiment-designs.json \
+  --pipeline-context outputs/signal-agent/pipeline-context.md \
+  --audit-log outputs/validation/read-audit.log \
+  --history outputs/prioritisation/ranked-hypotheses.json \
+  --findings outputs/feedback/findings.md
+```
+
+Parse stdout JSON. For each entry in `operations`:
+
+- `op: "create"` — run dedup search first (`dedup_search_jql`), then call `mcp__mcp-atlassian__jira_create_issue` with `create_payload` if no open match found
+- `op: "check_and_comment_or_create"` — call `mcp__mcp-atlassian__jira_get_issue` on `prior_ticket`; if status ≠ Closed/Done → call `mcp__mcp-atlassian__jira_add_comment` with `comment_body`; if closed → call `mcp__mcp-atlassian__jira_create_issue` with `create_payload`
+
+Record each created/updated ticket key in memory for Step 7. Do not invent ticket keys — only record keys returned by MCP tool responses.
+
+For each approved experiment, only if the dedup check above confirms no open ticket exists:
 
 **Pre-write: decomposition check**
 
@@ -341,7 +377,7 @@ Do not create a single story that requires multiple engineers, multiple services
 **Fields:**
 - `project_key`: from config `growth_agent.jira_project_key`
 - `issue_type`: Story
-- `summary`: `[Growth] {concise action title}` — max 70 chars. Do not include the hypothesis ID (H1, H-A3, etc.) in the summary.
+- `summary`: `[{repo-name}] {concise action title}` — max 70 chars. Use the short name of the primary repo from the experiment's verified code evidence (e.g. `sea-web-app`, `luxola`). If no verified file exists, use the project key. Do not include the hypothesis ID (H1, H-A3, etc.) in the summary.
 - `additional_fields`: `{"labels": [...], "epicKey": "{epic_key}"}` — use `epicKey`, NOT `parent`
 - Do NOT include `priority` in `additional_fields` — causes field validation error
 
@@ -400,31 +436,51 @@ Record each created ticket key in memory for Step 7.
 
 ### Step 7 — Write Confluence page
 
-After all Jira stories are created, publish a Confluence summary page using
-`mcp__mcp-atlassian__confluence_create_page`.
+After all Jira stories are created, publish a single Confluence page that tells the complete signal → diagnosis → experiment story.
 
 **Config:**
-- `space_key`: from `config/atlassian.yml → space_name`
+- `space_key`: from `config/atlassian.yml → space_name` (PI)
 - `parent_id`: from `config/atlassian.yml → page_id`
-- `title`: `Intelligence Loop — Prioritised Experiments {YYYY-MM}`
-- `emoji`: 🎯
-- `content_format`: markdown
+- `title`: `Intelligence Loop — {YYYY-MM-DD}` (today's date)
 
 **Confluence output rules — apply before every write:**
-- Do NOT include: C/I/S score columns, Score Key section, Priority Debt table, Inspiration Loop Enrichment section, hypothesis IDs (H-A, H-B, H-C) in the main table, agent names, or pipeline chain in the footer
-- Strip all agent references from experiment descriptions before writing (BET-NNN IDs, "Agent 12", "Agent 20")
-- If Agent 20 market context is available and matched: inline it as a natural sentence in the experiment description — do not create a separate section
+- Do NOT include: C/I/S score columns, hypothesis IDs (H-A, H-B), agent names, dataset codes, BET-NNN IDs, pipeline step references, source attribution
+- Rival explanations in plain English only — no internal classification labels
+- Experiment descriptions come from `ab_test.variant` only — no new inference
+- If Agent 20 market context is available and matched: inline as a natural sentence in the relevant experiment row — no separate section
 - Jira ticket links are the only internal IDs that should appear on the page
+- Verbatim user quotes from Agent 11 findings: max 2 per evidence bullet, ≤ 20 words each — plain text, no source labels
 
-**Page sections:**
+**Page body — write to `.tmp/intelligence-loop-body.md`:**
 
 ```markdown
 ## What we're seeing
-{2–3 sentence plain-English summary of the cycle signal — no metric dataset codes, no signal IDs}
+{2–3 sentence plain-English summary of the cycle signal — metric, direction, market, period.
+No dataset codes, no signal IDs.
+Link: [Sephora Pulse — {date}]({pulse_page_url from pipeline-context.md})}
 
 ---
 
-## Experiments
+## Why we think this is happening
+
+**Evidence reviewed**
+- Users reported: {2–3 bullet themes from Agent 11 findings.md — plain English, no source labels}
+- Code review found: {1–2 bullet plain-English finding from diagnosis.json mechanism_summary — cite repo + function name if verified}
+
+**Three explanations we considered**
+1. {rival_diagnosis_1 — plain English, different causal class}
+2. {rival_diagnosis_2}
+3. {rival_diagnosis_3}
+
+**Favoured explanation**
+{favored_diagnosis from diagnosis.json — 2–3 sentences. Include counterfactual: "If X were not the case, we would expect to see Y."}
+
+**What would change our view**
+{falsification_criteria from diagnosis.json — 1–2 sentences}
+
+---
+
+## What we're testing
 
 | # | Issue | Proposed experiment | Markets | Story points | Ticket |
 |---|---|---|---|---|---|
@@ -451,6 +507,73 @@ After all Jira stories are created, publish a Confluence summary page using
 
 _[date]_
 ```
+
+**Run the script:**
+```bash
+python execution/write_confluence.py \
+  --mode create \
+  --space PI \
+  --parent-id {page_id from config/atlassian.yml} \
+  --title "Intelligence Loop — $(date +%Y-%m-%d)" \
+  --body-file .tmp/intelligence-loop-body.md \
+  --content-format wiki
+```
+
+Parse stdout JSON: record `page_id` and `url` into `outputs/prioritisation/ranked-hypotheses.json` entry fields `confluence_page_id` and `confluence_page_url`.
+
+If script exits non-zero:
+- Exit 1 (401/403): surface auth error to PM, instruct token rotation. Local outputs still written.
+- Exit 2 (400): check title and parent ID; fix and retry once.
+- Exit 3/4: config or input error — surface to PM; note in `created-tickets.md`.
+
+---
+
+### Step 7b — Raise GitHub PRs (PM-triggered, per ticket)
+
+This step is triggered on-demand after Jira stories are created. It is NOT automatic — the PM adds a comment to a specific Jira ticket to request a PR.
+
+**Trigger comment format (PM adds to the Jira ticket):**
+```
+raise PR -> {repo-name}
+```
+Examples: `raise PR -> sea-web-app`, `raise PR -> luxola`
+
+**When PM requests a PR for a ticket:**
+
+1. Fetch the ticket and its comments:
+   ```
+   mcp__mcp-atlassian__jira_get_issue(issue_key="{ticket_key}")
+   ```
+   Extract summary, description, and comments. Write to `.tmp/jira-{ticket_key}.json`:
+   ```json
+   {
+     "summary": "...",
+     "description": "...",
+     "url": "https://sephora-asia.atlassian.net/browse/{ticket_key}",
+     "comments": [{"body": "...", "author": "...", "created": "..."}, ...]
+   }
+   ```
+
+2. Run the script:
+   ```bash
+   python execution/raise_github_pr.py --ticket {ticket_key}
+   ```
+
+3. Parse stdout JSON:
+   - `op: "fetch_required"` → you skipped step 1; write `.tmp/jira-{ticket}.json` first, then re-run
+   - `op: "error"` → surface the `error` field to PM; do not proceed
+   - `op: "create_pr"` → execute the `execution_steps` array in order:
+     1. Verify access via `mcp__github__get_file_contents` — if 403, surface to PM and halt
+     2. Create branch via `mcp__github__create_branch`
+     3. Create draft PR via `mcp__github__create_pull_request`
+     4. Comment PR URL back to Jira ticket via `mcp__mcp-atlassian__jira_add_comment`
+        (replace `{pr_url}` placeholder with actual URL from step 3 response)
+
+**Hard rules:**
+- Always create as draft (`draft: true`) — the engineer promotes it when ready
+- Never push any code changes — branch is empty; implementation happens outside this system
+- If GitHub MCP returns 403 on any step, halt and surface to PM with repo name and token instructions
+- Do not retry a PR creation if the branch already exists — surface to PM
 
 ---
 
@@ -625,6 +748,12 @@ growth_agent:
 | `priority` field in Jira additional_fields causes error | Remove `priority` from additional_fields — omit entirely |
 | `parent.key` in Jira additional_fields causes error | Use `epicKey` field instead of `parent` |
 | Confluence create fails | Log error; local outputs still written; note Confluence step failed in created-tickets.md |
+| `create_jira_stories.py` exits 3 (input missing) | Halt Jira creation — surface missing file to PM |
+| `create_jira_stories.py` exits 2 (config error) | Halt — check `config/atlassian.yml` project/epic keys |
+| `raise_github_pr.py` exits 2 (no raise-PR comment) | Surface to PM: "No 'raise PR -> {repo}' comment found on ticket" |
+| `raise_github_pr.py` exits 3 (unknown repo) | Surface to PM with list of known repos; ask them to correct the comment |
+| GitHub MCP returns 403 on permissions check | Surface to PM: "No write access to {repo} via configured MCP token. Check .mcp.json GitHub credentials." |
+| GitHub branch already exists | Surface to PM: "Branch {branch} already exists. Delete it or use a different ticket." |
 | All entries in needs-spike | Surface to PM: "No scoreable experiments this cycle. Experiment designs may be incomplete — re-run Steps 1–2 of the intelligence loop." |
 | `outputs/prioritisation/` missing | Create directory before writing |
 | `outputs/jira-writer/` missing | Create directory before writing |

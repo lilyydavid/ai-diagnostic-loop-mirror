@@ -1,4 +1,9 @@
 {
+  "name": "product-experiments",
+  "private": true,
+  "workspaces": [
+    "domo-mcp-server"
+  ],
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",
     "js-yaml": "^4.1.1",

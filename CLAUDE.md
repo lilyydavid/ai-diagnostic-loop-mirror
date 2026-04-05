@@ -115,20 +115,39 @@ Full architecture with diagrams, state/persistence model, config registry, and a
 
 ## Available Agents
 
-| Agent | Trigger | Phase | Description |
+Agent locations are governed by `config/agents.yml` (the registry). Resolve all agent paths from there — never hardcode paths in skills or directives.
+
+**Shared agents** (`shared/agents/`) — used by more than one project:
+
+| Agent | Trigger | Consumed by | Description |
 |---|---|---|---|
-| `10-signal-agent` | `/intelligence-loop` | Intelligence | KPI signal from Domo; PM gate. Hidden: `/sharpen` |
-| `11-feedback-agent` | spawned by loop | Intelligence | Domo feedback triangulation; contributes evidence to diagnosis artifact; uses `check_findings_cache.py` |
-| `12-validation-agent` | spawned by loop | Intelligence | Local codebase survey; localises mechanism; derives hypotheses and A/B designs; uses `score_hypotheses.py`, `index_repos.py` |
-| `13-prioritisation-agent` | spawned by loop | Intelligence | Consumes diagnosis artifact + experiment designs; C×I×S scoring; code grounding; Jira; lineage; uses `score_hypotheses.py`, `verify_code_grounding.py`, `resolve_config.py` |
-| `14-weekly-refresh` | `/weekly-refresh` | Intelligence | Background findings store refresh |
-| `15-trend-escalation-agent` | spawned after 13 | Intelligence | Priority debt + escalation; uses `calculate_priority_debt.py` |
-| `20-inspiration-scout` | `/inspiration-loop` | Inspiration | Signal + frontend browse + market scan; PM Gate 1; produces bet-log for intelligence loop input; uses `check_signals_staleness.py` |
-| `05-funnel-monitor` | `/funnel-monitor` | Action | Weekly ecommerce funnel report (Thu→Wed) |
-| `06-market-intel` | `/market-intel` | Action | SEA web + social scanner |
-| `07-validation` | `/validate-hypotheses` | Action | Confluence research + synthetic user modeling; uses `score_hypotheses.py` |
-| `08-github-reader` | `/github-reader` | Action | Code context per hypothesis; uses `index_repos.py` |
-| `09-jira-writer` | `/jira-writer` | Action | Jira story creation; uses `resolve_config.py` |
+| `13-prioritisation-agent` | spawned by loop | intelligence-loop, inspiration-loop | C×I×S scoring; code grounding; Jira; lineage; uses `score_hypotheses.py`, `verify_code_grounding.py`, `resolve_config.py` |
+| `14-weekly-refresh` | `/weekly-refresh` | intelligence-loop | Background findings store refresh |
+
+**Intelligence Loop** (`projects/intelligence-loop/agents/`):
+
+| Agent | Trigger | Description |
+|---|---|---|
+| `10-signal-agent` | `/intelligence-loop` | KPI signal from Domo; PM gate. Hidden: `/sharpen` |
+| `11-feedback-agent` | spawned by loop | Domo feedback triangulation; contributes evidence to diagnosis artifact; uses `check_findings_cache.py` |
+| `12-validation-agent` | spawned by loop | Local codebase survey; localises mechanism; derives hypotheses and A/B designs; uses `score_hypotheses.py`, `index_repos.py` |
+| `15-trend-escalation-agent` | spawned after 13 | Priority debt + escalation; uses `calculate_priority_debt.py` |
+
+**Inspiration Loop** (`projects/inspiration-loop/agents/`):
+
+| Agent | Trigger | Description |
+|---|---|---|
+| `20-inspiration-scout` | `/inspiration-loop` | Signal + frontend browse + market scan; PM Gate 1; produces bet-log for intelligence loop input; uses `check_signals_staleness.py` |
+
+**Action Layer** (`projects/action-layer/agents/`) — not yet active:
+
+| Agent | Trigger | Description |
+|---|---|---|
+| `05-funnel-monitor` | `/funnel-monitor` | Weekly ecommerce funnel report (Thu→Wed) |
+| `06-market-intel` | `/market-intel` | SEA web + social scanner |
+| `07-validation` | `/validate-hypotheses` | Confluence research + synthetic user modeling; uses `score_hypotheses.py` |
+| `08-github-reader` | `/github-reader` | Code context per hypothesis; uses `index_repos.py` |
+| `09-jira-writer` | `/jira-writer` | Jira story creation; uses `resolve_config.py` |
 
 ## Skills (orchestrators)
 
@@ -150,6 +169,7 @@ Skill (Layer 1 — directive)  → which agents, what order, what gates
 ## Key Files & References
 
 - `.mcp.json` — MCP credentials (git-ignored). See `directives/mcp_servers.md` for tool selection, scopes, and error handling.
+- `config/agents.yml` — Agent registry. Maps agent IDs to paths; governs shared vs project scope. Resolve all agent paths from here.
 - `config/atlassian.yml` — Atlassian defaults. Config layers resolved by `execution/resolve_config.py` — see `directives/resolve_config.md`.
 - `config/domo.yml` — Domo registry, signal thresholds, PII exclusion list.
 - `.claude/rules/` — Auto-loaded per context: `atlassian` (permissions), `agents` (conventions + overwrite/append list), `workspace-setup` (onboarding).

@@ -6,9 +6,11 @@ description: Apply when adding a new agent, running a skill, or working inside t
 
 ## Adding an agent
 
-1. Create a new directory under `.claude/agents/` with a numeric prefix (e.g. `06-my-agent/`).
-2. Add a `SKILL.md` file describing role, trigger, steps, output contract, permissions, and error handling.
-3. Register the skill in `CLAUDE.md` agents table.
+1. Decide scope: is this agent used by one project (→ `projects/{loop}/agents/`) or multiple projects (→ `shared/agents/`)?
+2. Create a new directory with a numeric prefix (e.g. `projects/intelligence-loop/agents/16-my-agent/`).
+3. Add `SKILL.md` (index card), `POLICY.md` (contracts + permissions + error handling), and `PROCEDURE.md` (step-by-step execution).
+4. Register the agent in `config/agents.yml` under the correct project or shared key.
+5. Add a row to the relevant agent table in `CLAUDE.md`.
 
 ## Skill file structure
 

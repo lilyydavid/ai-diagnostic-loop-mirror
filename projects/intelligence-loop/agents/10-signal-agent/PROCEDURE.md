@@ -1,31 +1,11 @@
-# /intelligence-loop — Signal Agent (Agent 10)
+# 10-signal-agent — Procedure
 
-## Role in pipeline
-
-Agent 10 of the Phase 1 Intelligence Loop. First agent to run.
-Reads registered Domo KPI sources, extracts metric movements, applies signal filters, and surfaces a confirmed signal list for the PM to approve before Step 2 begins.
-
-```
-PM triggers loop
-      │
- 10-signal-agent  ──────────────────────────────────────────┐
- (Domo KPI signal)                                          │
-      │                                              [/sharpen command]
-      │ confirmed signal list                        First-principles sharpening
-      ▼                                              (optional, PM-triggered)
- 11-feedback-agent + 12-validation-agent
-```
-
-## Trigger
-
-- PM runs `/intelligence-loop` or says "run the intelligence loop" / "check KPI signals"
-- Hidden sharpening command: `/sharpen` — run after PM gate to sharpen signal interpretation
+Step-by-step execution. Resume from the labelled step when continuing a parked run.
+Context: read POLICY.md for output contracts, permissions, and error handling.
 
 ---
 
-## Agent Steps
-
-### Step 1 — Load registry
+## Step 1 — Load registry
 
 Read `config/domo.yml`. Extract all approved KPI sources:
 - `kpi_pages` where `approved: true`
@@ -38,13 +18,13 @@ For each dataset entry, check `columns_discovered`:
 - `false` → schema discovery required on first query (see Step 3).
 - `true` → use the `metrics` array directly to build SELECT. No discovery call needed.
 
-### Step 2 — Compute query windows
+## Step 2 — Compute query windows
 
 For each source, determine the date window from `config/domo.yml → query_windows`.
 Use source-specific window if `query_window_days` is set on the entry; otherwise use the type default.
 Every query MUST include a date range filter. No unbounded queries.
 
-### Step 3 — Query KPI sources
+## Step 3 — Query KPI sources
 
 **Important — `get-page-cards` and `get-card` return metadata only, not live metric values.**
 Use `get-dashboard-signals` for all page sources. It chains page → cards → datasets → rows in one call and is the only reliable way to retrieve live numbers.
@@ -83,8 +63,10 @@ Extract per source:
 - Market / platform breakdown
 - Data freshness (`dataCurrentAt` or latest date in result rows)
 
+**On query failure:** log failure with reason; call `python execution/retry_queue.py --write-failure --source-id {id} --source-name "{name}" --agent 10-signal-agent --step "Step 3" --error "{error_message}"`; continue with remaining sources.
+
 **Traffic channel query — run for every cycle alongside funnel datasets:**
-Source: `29a01e0e` (Domain KPI by Session) — uses `traffic_channel_lv1`, `traffic_channel_lv2`, `traffic_channel_lv3` dimensions (registered in `config/domo.yml → kpi_datasets.sessions[0].dimensions`).
+Source: `29a01e0e` (Domain KPI by Session) — uses `traffic_channel_lv1`, `traffic_channel_lv2`, `traffic_channel_lv3` dimensions.
 
 Query (current week):
 ```sql
@@ -106,7 +88,7 @@ Flag channels where session share shifted ≥ 10 pp WoW (large mix shift — aff
 Flag channels where CVR dropped ≥ 5 pp WoW (channel-specific conversion failure).
 Known context: Retention channel surges during member campaigns are expected — note if lv1 = "Retention" and delta is large; surface to PM to confirm whether a campaign was running.
 
-### Step 4 — Apply signal threshold
+## Step 4 — Apply signal threshold
 
 Prefer deterministic execution for this post-query stage. After raw KPI values are collected, first run `execution/normalize_signal_inputs.py` per `directives/normalize_signal_inputs.md` to flatten query results into a stable payload. Then run `execution/build_signal_report.py` per `directives/build_signal_report.md` to apply config-driven thresholds and produce stable `signals.md` and `pipeline-context.md` outputs.
 
@@ -116,7 +98,7 @@ Use `default` if type not matched.
 
 Keep metrics where absolute movement ≥ threshold. Drop below-threshold movements — do not surface them.
 
-### Step 5 — Flag suspicious metrics
+## Step 5 — Flag suspicious metrics
 
 For each metric above threshold, apply suspicious checks from `thresholds.suspicious_metric`:
 - YoY movement > `yoy_flag_pct` (50%)
@@ -127,7 +109,7 @@ If any check triggers: mark metric `suspicious: true` with reason.
 **Do not suppress.** Surface all suspicious metrics to PM with flag and reason.
 `action: surface_to_pm` — PM decides whether to include or exclude from signal list.
 
-### Step 6 — Build funnel tables
+## Step 6 — Build funnel tables
 
 Prefer deterministic execution here as well. Once the required aggregated dataset rows are available, run `execution/calculate_funnel_tables.py` per `directives/calculate_funnel_tables.md` to build the `funnel_tables` payload instead of hand-formatting these tables in orchestration.
 
@@ -175,7 +157,7 @@ Sort rows by Cart→Order% descending. Exclude rows with < 10 cart users (noise)
 
 Include a 2–3 sentence reading below Table 3 noting: where checkout drop-off is worst, how it cross-references the signal list, and which markets have the most room for improvement.
 
-### Step 7 — Surface signal list to PM
+## Step 7 — Surface signal list to PM
 
 Present:
 
@@ -205,7 +187,7 @@ Table 3 — User checkout deep-dive Cart→Checkout→Payment→Order (46ef93fa)
 PM gate — ask: "Which of these signals do you want to take forward into triangulation? Confirm or adjust."
 Wait for explicit PM response. Do not auto-advance.
 
-### Step 8 — Write outputs via deterministic pipeline
+## Step 8 — Write outputs via deterministic pipeline
 
 After PM confirms the signal list, run the deterministic pipeline to produce authoritative output files. Do not hand-write `signals.md` or `pipeline-context.md` directly.
 
@@ -262,7 +244,7 @@ python3 execution/run_signal_pipeline.py \
 
 Treat script output as authoritative. Do not manually overwrite `signals.md` or `pipeline-context.md` after this point.
 
-If the script errors: read stderr, fix the input JSON, re-run. Update this directive with any new edge cases found.
+If the script errors: read stderr, fix the input JSON, re-run. Update PROCEDURE.md with any new edge cases found.
 
 ---
 
@@ -348,124 +330,3 @@ Do NOT write, log, or append any PM responses or the Signal Frame to any file or
 The Signal Frame exists only in the active conversation context and is discarded when the session ends.
 Do NOT pass PM responses to `11-feedback-agent` or `12-validation-agent` as attributed quotes.
 The Signal Frame may inform the agent's *direction of search* internally, but the PM's words must never appear in any output file.
-
----
-
-## Output Contract
-
-### Confluence — Sephora Pulse update page (primary stakeholder output)
-Write signal report as a **child page** under the Sephora Pulse parent page.
-Parent page ID: `64759660546`
-Parent URL: `https://sephora-asia.atlassian.net/wiki/spaces/PI/pages/64759660546/Sephora+Pulse+update`
-
-**Each run creates or updates a date-stamped child page:**
-1. Compute child page title: `Sephora Pulse — YYYY-MM-DD` (today's date).
-2. Call `mcp__mcp-atlassian__confluence_get_page_children` on parent ID `64759660546` to check if a child with that title already exists.
-   - If it exists: call `mcp__mcp-atlassian__confluence_update_page` on the existing child page ID.
-   - If it does not exist: call `mcp__mcp-atlassian__confluence_create_page` with `parent_id: 64759660546` and the dated title.
-3. No source attribution. Format: themed sections by signal cluster.
-4. The parent page (`64759660546`) is never modified.
-
-If Confluence write fails (401/403): surface the auth error to PM and instruct token rotation.
-Do NOT skip the Confluence write — it is the primary output, not the .md files.
-
-### `outputs/signal-agent/signals.md`
-Internal record — overwrite each run. Mirrors Confluence content for pipeline handoff.
-
-```markdown
-# Signal Report — [date]
-## Confirmed Signals
-| Market | Metric | Value | Delta | Period | PM Confirmed | Suspicious |
-|---|---|---|---|---|---|---|
-...
-
-## Suspicious Flags
-[metric]: [reason] — PM decision: [include / exclude]
-
-## Traffic Mix
-| Market | Platform | Channel (lv1) | Sub-channel (lv2) | Sessions | Share% | CVR% | WoW Sessions | WoW CVR |
-...
-[channel shift flags and campaign context notes]
-
-## Funnel View
-### Session Funnel (all markets)
-| Market | Platform | Sessions | PDP% | ATC% | Cart% | CVR% |
-...
-
-### User-Level Checkout Funnel (all markets)
-| Market | Cart Users | Cart→Checkout% | Checkout→Payment% | Payment→Order% | Cart→Order% |
-...
-
-## Sources
-- [source name] ([type]) — [n cards] — queried [date range]
-```
-
-### `outputs/signal-agent/pipeline-context.md`
-Internal pipeline handoff to agents 11 and 12 — overwrite each run.
-
-```markdown
-# Pipeline Context — Signal Agent — [date]
-## Query Windows
-[source type]: [n] days
-
-## Confirmed Signal List
-[confirmed signals from PM gate]
-
-## PM Signal Frame
-[appended by /sharpen if run — PM's first-principles reasoning]
-
-## Handoff
-Ready for: 11-feedback-agent, 12-validation-agent
-Signals to triangulate: [n]
-```
-
----
-
-## Configuration
-
-```yaml
-# config/domo.yml
-access_control: strict
-kpi_pages / kpi_cards / kpi_datasets  # registered sources
-query_windows                          # per-source-type date windows
-thresholds.signal_threshold_pct        # per metric type
-thresholds.suspicious_metric           # flag rules
-```
-
-## Permissions
-
-- Read: registered Domo KPI sources only (`kpi_pages`, `kpi_cards`, `kpi_datasets`)
-- Write: `outputs/signal-agent/` (pipeline handoff files)
-- Write: Confluence child pages under Sephora Pulse (parent ID `64759660546`) — signal report only; parent page never modified
-- No writes to Jira or any feedback source
-
-## Error Handling
-
-| Error | Action |
-|---|---|
-| Domo query fails (any source) | Log failure with reason; continue with remaining sources; surface failures to PM in signal report |
-| PII column detected in dataset schema | Halt that dataset; surface to PM; skip to next source |
-| Unregistered ID attempted | Hard error — surface to PM, do not query |
-| No approved sources in registry | Halt loop; tell PM to register at least one KPI source in `config/domo.yml` |
-| No signals above threshold | Surface to PM: "No signals exceeded threshold. Options: (1) lower threshold in config, (2) widen query window, (3) proceed to triangulation without signal anchor" |
-| PM gate timeout / no response | Park loop; write current state to pipeline-context; resume on next run |
-
----
-
-## Self-Anneal (run after every execution)
-
-Append one entry to `outputs/signal-agent/run-log.json` (create with `[]` if absent):
-
-```json
-{
-  "run_at": "YYYY-MM-DDTHH:MM",
-  "outcome": "success | partial | failed",
-  "failures": ["Step N: what broke and why"],
-  "constraints_discovered": ["e.g. column 'date' renamed to 'date_local' in dataset X"]
-}
-```
-
-If `failures` or `constraints_discovered` is non-empty:
-- Update this SKILL.md with the new constraint (schema correction, API limit, timing, tool behaviour)
-- If a script broke: fix it, test it, record the fix in `failures`
-- Do not discard errors silently — this directive must reflect what the system has learned

@@ -1,26 +1,43 @@
-# squad-enhancement
+# product-experiments
 
-Internal intelligence and ideation system for SEA ecommerce PMs. Two complementary loops that turn KPI signals into ranked, experiment-ready hypotheses and prototype bets.
+AI-assisted PM diagnostic tool for SEA ecommerce teams. Two complementary loops that turn KPI signals into ranked, experiment-ready hypotheses and prototype bets — across SG, MY, AU, NZ, PH, HK, TH, and ID.
 
-## What this does
+---
 
-**Intelligence Loop** — 3-step diagnostic pipeline triggered by the PM.
-1. **Signal** (Agent 10) — queries registered Domo KPI datasets; surfaces which metrics moved, where, by how much
-2. **Triangulate** — two parallel steps:
-   - (2a) Agent 11 — Domo feedback (app reviews, Love Meter, CS tickets) + Confluence UX research
-   - (2b) Agent 12 — independent code review; maps FE/BE journey; designs A/B experiments; scores confidence/impact/scope
-3. **Prioritise** (Agent 13) — scores experiments by C×I×S; PM approves; creates Jira stories + Confluence summary
+## How it works
 
-**Inspiration Loop** — PM-triggered ideation loop that produces prototype bets.
-1. **Scout** (Agent 20) — loads Agent 10 signals + browses SEA frontends + scoped market scan → PM Gate 1 (pre-mortem + prototype idea) → bet recorded
+The system uses a **3-layer architecture** that separates intent from execution:
+
+- **Layer 1 — Directives** (`directives/`, agent `SKILL.md` files): SOPs in Markdown — what to do, in what order, and how to handle edge cases
+- **Layer 2 — Orchestration** (Claude): reads directives, routes to execution scripts, handles errors, asks for clarification
+- **Layer 3 — Execution** (`execution/`): deterministic Python scripts — API calls, data processing, file I/O
+
+LLMs handle decision-making. Scripts handle computation. This separation prevents error compounding.
+
+---
+
+## Loops
+
+### Intelligence Loop
+
+4-step diagnostic pipeline triggered by `/intelligence-loop`.
+
+1. **Signal** (Agent 10) — queries Domo KPI datasets; surfaces which metrics moved, where, by how much; PM reviews and approves
+2. **Diagnose** — two parallel sub-steps:
+   - (2a) **Feedback** (Agent 11) — Domo feedback triangulation (app reviews, Love Meter, CS tickets) + Confluence UX research
+   - (2b) **Validation** (Agent 12) — independent codebase survey; localises the failure mechanism; designs A/B experiments
+3. **Prioritise** (Agent 13) — scores experiments C×I×S; PM approves; produces Jira stories + Confluence summary
+4. **Escalate** (Agent 15) — tracks priority debt; escalates persistently unactioned hypotheses
+
+### Inspiration Loop
+
+PM-triggered ideation loop triggered by `/inspiration-loop`.
+
+1. **Scout** (Agent 20) — loads Agent 10 signals + browses SEA frontends + scoped market scan → PM Gate 1 (pre-mortem + prototype idea) → bet recorded with target metric and odds
 2. **Classify** (Agent 21, in design) — classifies bet as pain / shine / pain+shine
 3. Agents 22–24 (in design) — prototype builder → launch validator → fit tracker
 
-Both loops feed Agent 13: Intelligence Loop provides code-grounded experiments; Inspiration Loop provides market context and PM odds as optional enrichment.
-
-## Markets
-
-SG · MY · AU · NZ · PH · HK · TH · ID
+Both loops feed Agent 13: the Intelligence Loop provides a diagnosis artifact plus code-grounded experiment designs; the Inspiration Loop provides market context and PM odds as optional enrichment for scoring.
 
 ---
 
@@ -28,7 +45,7 @@ SG · MY · AU · NZ · PH · HK · TH · ID
 
 | Command | What it does |
 |---|---|
-| `/intelligence-loop` | Run the full 3-step intelligence pipeline |
+| `/intelligence-loop` | Run the full 4-step intelligence pipeline |
 | `/inspiration-loop` | Run the inspiration scout and record a bet |
 | `/weekly-refresh` | Background refresh of all Domo feedback datasets |
 
@@ -39,19 +56,25 @@ SG · MY · AU · NZ · PH · HK · TH · ID
 ### 1. Clone
 
 ```bash
-git clone git@github.com:lilyydavid/squad-enhancements.git
-cd squad-enhancements
+git clone https://github.com/lilyydavid/product-experiments.git
+cd product-experiments
 ```
 
-### 2. Configure MCP credentials
+### 2. Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 3. Configure MCP credentials
 
 Create `.mcp.json` (git-ignored). It must contain credentials for four MCP servers:
 - `mcp-atlassian` — Atlassian API token → https://id.atlassian.com/manage-profile/security/api-tokens
-- `domo-mcp` — Domo OAuth client_id + client_secret
+- `domo-mcp` — Domo OAuth `client_id` + `client_secret`
 - `github` — GitHub PAT (scopes: `audit_log, repo`)
 - `chrome-devtools` — Chrome DevTools MCP (used by Inspiration Loop for frontend browsing)
 
-### 3. Configure Atlassian targets
+### 4. Configure Atlassian targets
 
 Edit `config/atlassian.yml`:
 ```yaml
@@ -68,21 +91,19 @@ cp config/atlassian.local.yml.example config/atlassian.local.yml
 ```
 `atlassian.local.yml` is git-ignored.
 
-### 4. Configure Domo sources
+### 5. Configure Domo sources
 
-Edit `config/domo.yml` — register all KPI datasets, pages, and cards before the agent queries them. Every source requires explicit approval before first query.
+Edit `config/domo.yml` — register all KPI datasets, pages, and cards before running the agent. Every source requires explicit registration before first query.
 
-### 5. Configure local repo paths (Agent 12)
+### 6. Configure local repo paths (Agent 12)
 
 ```bash
 cp config/repos.local.yml.example config/repos.local.yml
 ```
 
-Fill in the local clone paths for each repo Agent 12 surveys (luxola, sea-web-app, sephora-ios, etc.). `repos.local.yml` is git-ignored.
+Fill in the local clone paths for each repo Agent 12 surveys. `repos.local.yml` is git-ignored.
 
-### 6. Build the Domo MCP server
-
-The Domo MCP server source lives in `domo-mcp-server/`:
+### 7. Build the Domo MCP server
 
 ```bash
 cd domo-mcp-server
@@ -97,47 +118,64 @@ Point `.mcp.json → domo-mcp → command` at the built `dist/index.js` path.
 ## Directory structure
 
 ```
-.claude/
-  agents/          # Agent SKILL.md files (10–15, 20)
-  commands/        # Slash command definitions
-  rules/           # Project rules (atlassian, agents, workspace-setup)
 config/
-  atlassian.yml    # Global Atlassian config (committed)
-  domo.yml         # Domo dataset/page/card registry (committed)
-  repos.yml        # Repo metadata (committed)
-  repos.local.yml  # Local clone paths (git-ignored)
-domo-mcp-server/   # Domo MCP server source (build before use)
-directives/        # SOPs for execution scripts and operational procedures
-execution/         # Deterministic Python scripts (DOE Layer 3)
-_bmad-output/
-  planning-artifacts/  # PRD, architecture, product brief
+  agents.yml          # Agent registry — all agent paths resolved from here
+  atlassian.yml       # Global Atlassian config (committed)
+  domo.yml            # Domo dataset/page/card registry (committed)
+  repos.yml           # Repo metadata (committed)
+  repos.local.yml     # Local clone paths (git-ignored)
+directives/           # SOPs for execution scripts and operational procedures
+execution/            # Deterministic Python scripts (Layer 3)
+projects/
+  intelligence-loop/agents/   # Agents 10–12, 15
+  inspiration-loop/agents/    # Agent 20
+  action-layer/agents/        # Agents 05–09 (not yet active)
+shared/
+  agents/                     # Agents 13–14 (used by multiple loops)
+outputs/              # Agent-generated files (operational data)
+domo-mcp-server/      # Domo MCP server source (build before use)
+.claude/
+  rules/              # Auto-loaded context rules
+  skills/             # Skill orchestrators (intelligence-loop, inspiration-loop)
 ```
 
 ---
 
 ## Agents
 
+**Intelligence Loop** (`projects/intelligence-loop/agents/`):
+
 | Agent | Trigger | Role |
 |---|---|---|
 | 10-signal-agent | `/intelligence-loop` | Query Domo KPI sources; surface metric movements; PM gate |
-| 11-feedback-agent | spawned by loop | Domo feedback triangulation (app reviews, Love Meter, CS tickets) + Confluence UXR |
-| 12-validation-agent | spawned by loop | Independent code review; journey map; A/B experiment design; C/I/S scoring |
-| 13-prioritisation-agent | spawned by loop | Score × rank; PM approval gate; Jira stories + Confluence summary |
-| 14-weekly-refresh | `/weekly-refresh` | Background refresh of all Domo feedback datasets |
-| 15-trend-escalation-agent | spawned by loop | Trend tracking; priority debt escalation for persistently unactioned hypotheses |
+| 11-feedback-agent | spawned by loop | Domo feedback triangulation + Confluence UXR |
+| 12-validation-agent | spawned by loop | Codebase survey; mechanism localisation; A/B experiment design |
+| 15-trend-escalation-agent | spawned by loop | Priority debt tracking and escalation |
+
+**Inspiration Loop** (`projects/inspiration-loop/agents/`):
+
+| Agent | Trigger | Role |
+|---|---|---|
 | 20-inspiration-scout | `/inspiration-loop` | Scout signals + SEA frontend browse + market scan + PM Gate 1 → bet log |
+
+**Shared** (`shared/agents/`):
+
+| Agent | Trigger | Role |
+|---|---|---|
+| 13-prioritisation-agent | spawned by loop | C×I×S scoring; PM approval gate; Jira stories + Confluence summary |
+| 14-weekly-refresh | `/weekly-refresh` | Background refresh of all Domo feedback datasets |
 
 ---
 
 ## Key design decisions
 
-- **No assumptions** — system halts and asks at every gap; never infers
+- **No assumptions** — system halts and asks at every gap; never infers missing data
 - **Code grounding** — every file path in a Jira story must appear in Agent 12's `read-audit.log`; unverified = hard block
 - **Aggregation-first** — no raw rows to the LLM; SQL aggregates at DB layer; verbatim sampled to configured max
 - **PII exclusion at query layer** — enforced in SQL SELECT; unverified schema = query halts
 - **Memory-first** — findings store read before querying Domo; re-query only when absent or stale
-- **Context-budgeted orchestration** — agents load directive + script + active outputs first, then expand only when blocked (see `directives/context_window_budget.md`)
-- **HIL at every gate** — PM approves at signal review, evidence confirmation, and prioritisation
+- **Context-budgeted orchestration** — agents load directive + script + active outputs first, expand only when blocked
+- **Human-in-the-loop at every gate** — PM approves at signal review, diagnosis, and prioritisation
 
 ---
 
@@ -159,5 +197,5 @@ _bmad-output/
 |---|---|
 | `mcp-atlassian` | All Confluence reads/writes and Jira |
 | `domo-mcp` | Domo datasets, pages, cards — built from `domo-mcp-server/` |
-| `github` | Read access to `sephora-asia` org repos |
+| `github` | Read access to product repos |
 | `chrome-devtools` | Browser automation for Inspiration Loop frontend browsing |

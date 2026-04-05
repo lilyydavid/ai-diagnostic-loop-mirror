@@ -2,7 +2,7 @@
 
 ## Role in pipeline
 
-Agent 13 of the Phase 1 Intelligence Loop. Runs after Agent 12 completes.
+Agent 13 of the Phase 1 Intelligence Loop. Runs after the shared diagnosis artifact has been built from Agent 11 and Agent 12 outputs.
 
 Connects the cycle signal to each hypothesis (confirmed and emergent) and its experiment
 design. Ranks experiments so the PM can decide which to proceed with. Creates Jira stories
@@ -11,6 +11,7 @@ Nothing goes to Jira or Confluence without PM approval at the gate.
 
 ```
 outputs/signal-agent/pipeline-context.md     ──┐
+outputs/diagnosis/diagnosis.json             ──┤
 outputs/validation/experiment-designs.json   ──┤──▶  13-prioritisation-agent
 outputs/prioritisation/ranked-hypotheses.json──┤         │
   (history — lineage)                          │         │
@@ -32,22 +33,44 @@ outputs/inspiration/bet-log.json  (optional) ──┘         │
 
 ## Trigger
 
-Spawned by `/intelligence-loop` after Agent 12 completes.
+Spawned by `/intelligence-loop` after `outputs/diagnosis/diagnosis.json` has been built.
 Standalone: "prioritise experiments", "rank hypotheses", "run prioritisation".
 
 ---
 
 ## Agent Steps
 
+### Step 0 — Validate input freshness
+
+Before loading any inputs, check that upstream outputs are current:
+
+```bash
+python execution/check_input_staleness.py \
+  --file outputs/validation/experiment-designs.json \
+  --threshold-days 3
+
+python execution/check_input_staleness.py \
+  --file outputs/diagnosis/diagnosis.json \
+  --threshold-days 3
+```
+
+For each file: if `stale: true`, surface to PM — "{file} is {age_days} days old (last updated: {last_modified}). Proceed, or re-run upstream agents first?" — halt until PM responds.
+If `reason: file_not_found`: halt with the appropriate upstream instruction.
+If both are fresh: proceed.
+
+---
+
 ### Step 1 — Load inputs
 
 1. Read `outputs/signal-agent/pipeline-context.md` — load the cycle signal and its severity
-2. Read `outputs/validation/experiment-designs.json` — load all hypotheses and experiment designs from Agent 12, including emergent hypotheses from hypothesis set 2
-3. Read `outputs/prioritisation/ranked-hypotheses.json` if it exists — load history for lineage
-4. Resolve config: `config/atlassian.yml` → `config/atlassian.team.yml` → `config/atlassian.local.yml`. Use `growth_agent.jira_project_key`, `growth_agent.epic_key`, `growth_agent.story_labels`.
+2. Read `outputs/diagnosis/diagnosis.json` — load observation, failure surface, rival diagnoses, favored diagnosis, and falsification criteria
+3. Read `outputs/validation/experiment-designs.json` — load all hypotheses and experiment designs from Agent 12, including emergent hypotheses from hypothesis set 2
+4. Read `outputs/prioritisation/ranked-hypotheses.json` if it exists — load history for lineage
+5. Resolve config: `config/atlassian.yml` → `config/atlassian.team.yml` → `config/atlassian.local.yml`. Use `growth_agent.jira_project_key`, `growth_agent.epic_key`, `growth_agent.story_labels`.
 
 If `experiment-designs.json` is missing → halt: "Run /intelligence-loop Steps 1–2 first"
 If `pipeline-context.md` is missing → halt: "Run /intelligence-loop Step 1 first"
+If `diagnosis.json` is missing → halt: "Run the diagnosis stage and build outputs/diagnosis/diagnosis.json before prioritisation"
 If no history file → first run, initialise lineage from scratch
 
 ---
@@ -213,7 +236,9 @@ Wait for PM response before writing any outputs.
 
 **Run this step before creating any Jira story, regardless of PM approval.**
 
-Load `outputs/validation/read-audit.log`. Extract the list of files Agent 12 actually read.
+Load `outputs/validation/read-audit.log`. Extract the list of files actually read.
+
+**Check 1 — File path verification**
 
 For each PM-approved experiment, check every entry in `code_evidence.files` against the audit log:
 
@@ -223,22 +248,41 @@ for each file in experiment.code_evidence.files:
   else → UNVERIFIED
 ```
 
-**Classification:**
+**Check 2 — grep_anchor verification (run after Check 1, on verified files only)**
+
+For each verified file that has a `grep_anchor` field, run Grep for the anchor string in the repo at the path confirmed in `repos.local.yml`:
+
+```
+for each verified file with a grep_anchor:
+  grep grep_anchor in repo → found → anchor confirmed
+                           → not found → anchor UNCONFIRMED
+```
+
+| Grep result | Action |
+|---|---|
+| Match found | Confirmed — proceed with full file reference in story |
+| No match (identifier not found) | Strip that file from "Where in the code"; note "function not confirmed by re-verification" |
+| All files in a story fail anchor check | Hard block — route to `needs-spike.md`; surface to PM: "Code claims could not be re-verified. Story requires engineering investigation before implementation." |
+
+If `grep_anchor` is absent for a file entry, skip Check 2 for that file — Check 1 path verification is sufficient.
+
+**Classification (after both checks):**
 
 | State | Definition | Action |
 |---|---|---|
-| All files verified | Every `code_evidence.files` entry is in the audit log | Proceed to Step 6 — story creation allowed |
+| All files verified + anchors confirmed | Every path in audit log; every anchor found | Proceed to Step 6 — story creation allowed |
 | Partially verified | ≥1 file verified, ≥1 unverified | Proceed — but use ONLY verified files in "Where in the code"; mark unverified files as excluded |
+| Verified paths but anchor unconfirmed | File was read but grep_anchor not found | Strip that file from "Where in the code" — function name may be inaccurate |
 | No files verified | `code_evidence.files` is empty, or no entry appears in audit log | **Hard block** — do not create a Jira story; route to `needs-spike.md`; surface to PM |
-| `confidence = Low` | Agent 12 set confidence = Low (no matching code found) | **Hard block** — do not create a Jira story; route to `needs-spike.md`; surface to PM |
-| `read-audit.log` missing | File does not exist | **Hard block all stories** — "Agent 12 read-audit.log is missing. Cannot verify code grounding. Run intelligence loop Steps 1–2 first." |
+| `confidence = Low` | Confidence set to Low (no matching code found) | **Hard block** — do not create a Jira story; route to `needs-spike.md`; surface to PM |
+| `read-audit.log` missing | File does not exist | **Hard block all stories** — "Code review audit log is missing. Cannot verify code grounding. Run intelligence loop Steps 1–2 first." |
 
 **Surface blocked stories to PM before proceeding:**
 
 ```
 *** AGENT 13 — CODE GROUNDING CHECK ***
 
-{N} story/stories blocked — code references could not be verified against Agent 12 read-audit.log:
+{N} story/stories blocked — code references could not be verified against the code review audit log:
 
   H{id}: "{description}" — {reason: no files verified / confidence Low / audit log missing}
     → Routed to needs-spike.md. No Jira story created.
@@ -268,7 +312,7 @@ For every approved hypothesis, check whether an open Jira ticket already exists 
 
 1. Use `mcp__mcp-atlassian__jira_get_issue` on the prior ticket key from lineage history.
 2. If the ticket is **open** (status ≠ Closed/Done): do NOT create a new story. Instead:
-   - Add a comment to the existing ticket with the new cycle's evidence, updated priority score, and any new code findings.
+   - Add a comment to the existing ticket with: the updated cycle date, any new evidence from this cycle's code review in plain English (cite repo + function name where relevant), and whether the root cause understanding has changed. One paragraph — no score tables, no internal file references, no agent names.
    - Record `jira_ticket: "{existing_key}"` in the output — never invent a new ticket number.
 3. If the ticket is **closed**: create a new story as normal and note the prior ticket key in the description.
 4. For **new hypotheses** (first cycle): search `mcp__mcp-atlassian__jira_search` with JQL `project = BAAPP AND summary ~ "{hypothesis keyword}" AND status != Closed ORDER BY created DESC` to catch any manually created tickets covering the same issue before creating a new one.
@@ -277,6 +321,19 @@ For every approved hypothesis, check whether an open Jira ticket already exists 
 
 For each approved experiment, create one Jira Story using `mcp__mcp-atlassian__jira_create_issue` only if the dedup check above confirms no open ticket exists.
 
+**Pre-write: decomposition check**
+
+Before creating any story, check whether `ab_test.variant` (from `experiment-designs.json`) describes multiple independent deliverables. Indicators: contains ` + `, lists multiple services, or Step 5a found evidence spanning services that were not all surveyed.
+
+If a hypothesis is compound:
+- Split into one story per atomic deliverable
+- Assign sub-IDs: H-D1, H-D2, H-D3
+- Each sub-story must have exactly one Proposed Change, one set of Acceptance Criteria, and one SP estimate
+- Link sub-stories to each other in Jira
+- Note the dependency relationship in each sub-story's Scope section: "Prerequisite: {sub-story}" or "Independent — can ship in any order"
+
+Do not create a single story that requires multiple engineers, multiple services, or multiple independent acceptance criteria.
+
 **Classification:**
 - SP ≤ 3 → Quick Win Story, labels from `growth_agent.story_labels`
 - SP > 3 → Backlog Story, label from `growth_agent.backlog_label`
@@ -284,43 +341,47 @@ For each approved experiment, create one Jira Story using `mcp__mcp-atlassian__j
 **Fields:**
 - `project_key`: from config `growth_agent.jira_project_key`
 - `issue_type`: Story
-- `summary`: `[Growth] {concise action title}` — max 70 chars
+- `summary`: `[Growth] {concise action title}` — max 70 chars. Do not include the hypothesis ID (H1, H-A3, etc.) in the summary.
 - `additional_fields`: `{"labels": [...], "epicKey": "{epic_key}"}` — use `epicKey`, NOT `parent`
 - Do NOT include `priority` in `additional_fields` — causes field validation error
 
-**Story description sections:**
+**Story description template:**
 ```
 ## Problem
-{metric dropping, magnitude, window}
+{metric dropping, magnitude, window, markets affected}
 
 ## Evidence
-- Funnel data: {metric, WoW delta, dataset}
-- Code: {current behaviour description from Agent 12 — cite repo + function name}
-- Hypothesis confidence: {level} | Priority score: {N}/27
+- Funnel signal: {metric value, WoW/YoY delta, markets — from pipeline-context.md}
+- Code review: {confidence_reason from experiment-designs.json — plain English, cite repo + function name}
+- Why this matters: {impact_reason from experiment-designs.json — plain English}
+- User signals: {app reviews / CS tickets / Love Meter findings from findings.md — omit section entirely if none}
 
 ## Proposed Change
-{specific, unambiguous description — sourced from Agent 12 experiment design only}
+{specific, unambiguous description — sourced from experiment-designs.json ab_test.variant only.
+One change only. If this is a sub-story, the parent hypothesis is noted in Related below.}
+
+## Scope — this ticket only
+{one sentence on what is NOT in scope if related sub-stories exist — omit section entirely if standalone}
 
 ## Where in the code
-⚠️ Only include files confirmed in outputs/validation/read-audit.log (Step 5a grounding check).
-   Never infer, guess, or reconstruct file paths. If a file is not in the audit log, omit it.
+⚠️ Only include files confirmed by code review verification. Never infer, guess, or reconstruct
+   file paths. If a file path is not confirmed, omit it.
 
-- Repo: {name — from experiment-designs.json}
-- File: {path} — {function}  ← verified in read-audit.log
-- File: {path} — {function}  ← verified in read-audit.log
-- Change: {description from Agent 12 ab_test.variant — no new inference}
+- Repo: {name}
+- File: {path} — {function}
+- File: {path} — {function}
+- Change: {description from ab_test.variant — no new inference}
 
 If no verified files: replace this section with:
-"Code location not yet verified. Agent 12 read-audit.log did not confirm matching files.
-Investigation required before implementation begins."
+"Code location not yet confirmed. Engineering investigation required before implementation begins."
 
 ## Market Context
-_(Include only if Agent 20 enrichment is available and matched to this hypothesis's signal domain. Omit section entirely if not.)_
-{market_context from bet-log.json most recent entry}
-PM bet odds: {pm_odds}
+_(Include only if enrichment is available and matched to this hypothesis's signal domain. Omit section entirely if not.)_
+{market_context}
+PM confidence: {pm_odds}
 
 ## Acceptance Criteria
-- [ ] {primary metric} improves by ≥{MDE — from Agent 12 ab_test.minimum_detectable_effect}
+- [ ] {primary metric} improves by ≥{MDE from experiment-designs.json ab_test.minimum_detectable_effect}
 - [ ] No regression in {related metric}
 - [ ] Change is behind a feature flag (if touching core funnel)
 - [ ] Unit test added for changed function
@@ -329,9 +390,8 @@ PM bet odds: {pm_odds}
 {N} SP — Quick Win / Backlog
 
 ## Related
-- Intelligence Loop cycle: {YYYY-MM} | Hypothesis: {ID} | Confidence: {level} | Priority score: {N}/27
-- Rollback: {method — from Agent 12 ab_test.rollback}
-- Code grounding: {N} file(s) verified in read-audit.log
+- Cycle: {YYYY-MM} | Markets: {markets} | Rollback: {method from ab_test.rollback}
+- Prior ticket (if carry-forward): {BAAPP-NNN}
 ```
 
 Record each created ticket key in memory for Step 7.
@@ -350,57 +410,46 @@ After all Jira stories are created, publish a Confluence summary page using
 - `emoji`: 🎯
 - `content_format`: markdown
 
+**Confluence output rules — apply before every write:**
+- Do NOT include: C/I/S score columns, Score Key section, Priority Debt table, Inspiration Loop Enrichment section, hypothesis IDs (H-A, H-B, H-C) in the main table, agent names, or pipeline chain in the footer
+- Strip all agent references from experiment descriptions before writing (BET-NNN IDs, "Agent 12", "Agent 20")
+- If Agent 20 market context is available and matched: inline it as a natural sentence in the experiment description — do not create a separate section
+- Jira ticket links are the only internal IDs that should appear on the page
+
 **Page sections:**
 
 ```markdown
-## Cycle Signal
-{signal description, magnitude, window}
+## What we're seeing
+{2–3 sentence plain-English summary of the cycle signal — no metric dataset codes, no signal IDs}
 
 ---
 
-## Signal → Hypothesis → Experiment
+## Experiments
 
-| ID | Signal | Hypothesis | Experiment | Market | SP | C | I | S | Score |
-|---|---|---|---|---|---|---|---|---|---|
-| H1 | ... | ... | ... | AU | 2 | High | High | 2 | **18** |
+| # | Issue | Proposed experiment | Markets | Story points | Ticket |
+|---|---|---|---|---|---|
+| 1 | {plain description of the problem} | {plain description of the test} | {markets} | {SP} | [{BAAPP-NNN}]({url}) |
 ...
 
-**Scoring:** C = Confidence · I = Impact · S = Scope (inverted SP) · Score = C×I×S (max 27)
-
 ---
 
-## Sprint Candidates — PM Approved
-
-| Rank | Jira | Hypothesis | Experiment | Market | SP | Score |
-|---|---|---|---|---|---|---|
-| 1 | [BAAPP-{N}]({url}) | H{id} — {short description} | {experiment} | {market} | {SP} | {score} |
-...
-
-**Total: {N} SP · Epic: [epic_key](epic_url)**
-
-> {one-line callout: which ticket to ship first and why}
-
----
-
-## Deferred
-
-| ID | Hypothesis | Reason | Action |
+## Next sprint
+| Ticket | What | Markets | SP |
 |---|---|---|---|
+| [{BAAPP-NNN}]({url}) | {1-line plain description} | {markets} | {SP} |
+
+{1–2 sentence plain-English rationale for why these are the priority this cycle}
 
 ---
 
-## Score Key
-
-| Dimension | Source | High | Medium | Low |
+## Backlog
+| Ticket | What | Markets | SP | Why deferred |
 |---|---|---|---|---|
-| Confidence | Agent 12 code reading | Code directly confirms failure | Related fragility or churn | No matching code found |
-| Impact | Agent 12 + signal breadth | Hard block or >30% sessions | Conditional path or subset | Edge case or narrow segment |
-| Scope | Agent 12 SP estimate (inverted) | SP 1 → 3 | SP 2–3 → 2 | SP >3 → 1 |
+| [{BAAPP-NNN}]({url}) | {description} | {markets} | {SP} | {plain reason: scope too large / needs spike / pending data} |
 
 ---
 
-*Generated by 13-prioritisation-agent · Intelligence Loop cycle {YYYY-MM} · {date}*
-*Agents: 10-signal-agent → 11-feedback-agent → 12-validation-agent → 13-prioritisation-agent*
+_[date]_
 ```
 
 ---
@@ -559,13 +608,14 @@ growth_agent:
 |---|---|
 | `experiment-designs.json` missing | Halt — "Run Steps 1–2 of intelligence loop first" |
 | `pipeline-context.md` missing | Halt — "Run Step 1 of intelligence loop first" |
-| `read-audit.log` missing | Hard block all Jira creation — "Agent 12 read-audit.log missing. Cannot verify code grounding." Surface to PM; route all approved stories to needs-spike.md |
+| `read-audit.log` missing | Hard block all Jira creation — "Code review audit log missing. Cannot verify code grounding." Surface to PM; route all approved stories to needs-spike.md |
 | All files for a story are unverified (not in audit log) | Hard block that story — route to needs-spike.md; surface to PM at Step 5a gate; do not create Jira story |
+| All grep_anchors for a story fail re-verification | Hard block that story — route to needs-spike.md; surface to PM: "Code claims could not be re-verified. Engineering investigation required." |
 | Confidence = Low for an approved story | Hard block that story — route to needs-spike.md; surface at Step 5a gate; no Jira story without code evidence |
 | Partially verified files | Proceed with verified files only in "Where in the code"; exclude unverified paths; note exclusions in story |
 | Experiment has no signal connection | Note gap; include in ranked output with "signal not mapped" flag |
 | Emergent hypothesis has no experiment design | Place in needs-spike.md with reason |
-| Agent 12 scores missing for an entry | Set confidence = Low, impact = Low; note "scores absent" |
+| Scores missing for an entry | Set confidence = Low, impact = Low; note "scores absent" |
 | No history file | First run — initialise lineage from scratch |
 | `bet-log.json` absent or stale | Skip Agent 20 enrichment silently; set `inspiration_market_context: null`, `inspiration_pm_odds: null`; no impact on scoring |
 | Agent 20 `target_metric` matches no hypothesis | Load enrichment but do not apply; note "Agent 20 signal domain unmatched" in ranked-hypotheses.md header |
@@ -575,6 +625,26 @@ growth_agent:
 | `priority` field in Jira additional_fields causes error | Remove `priority` from additional_fields — omit entirely |
 | `parent.key` in Jira additional_fields causes error | Use `epicKey` field instead of `parent` |
 | Confluence create fails | Log error; local outputs still written; note Confluence step failed in created-tickets.md |
-| All entries in needs-spike | Surface to PM: "No scoreable experiments this cycle. Agent 12 may need to complete experiment designs." |
+| All entries in needs-spike | Surface to PM: "No scoreable experiments this cycle. Experiment designs may be incomplete — re-run Steps 1–2 of the intelligence loop." |
 | `outputs/prioritisation/` missing | Create directory before writing |
 | `outputs/jira-writer/` missing | Create directory before writing |
+
+---
+
+## Self-Anneal (run after every execution)
+
+Append one entry to `outputs/prioritisation/run-log.json` (create with `[]` if absent):
+
+```json
+{
+  "run_at": "YYYY-MM-DDTHH:MM",
+  "outcome": "success | partial | failed",
+  "failures": ["Step N: what broke and why"],
+  "constraints_discovered": ["e.g. epicKey field causes 400 — use parent.key instead for project X"]
+}
+```
+
+If `failures` or `constraints_discovered` is non-empty:
+- Update this SKILL.md with the new constraint (Jira field validation, Confluence auth, config key)
+- If a script broke: fix it, test it, record the fix in `failures`
+- Do not discard errors silently — this directive must reflect what the system has learned

@@ -30,6 +30,23 @@ Can also be run standalone: "run trend analysis", "check signal trends", "escala
 
 ## Agent Steps
 
+### Step 0 — Validate input freshness
+
+Before loading any inputs, check that upstream outputs are current:
+
+```bash
+python execution/check_input_staleness.py \
+  --file outputs/prioritisation/ranked-hypotheses.json \
+  --threshold-days 7
+```
+
+Read the JSON output:
+- If `stale: true`: surface to PM — "ranked-hypotheses.json is {age_days} days old (last updated: {last_modified}). Trend analysis may reflect an old cycle. Proceed, or re-run Agent 13 first?" — halt until PM responds.
+- If `reason: file_not_found`: halt — "Run the intelligence loop through Agent 13 first".
+- If `stale: false`: proceed.
+
+---
+
 ### Step 1 — Load historical signal strength
 
 Read `outputs/validation/signal-strength-store.json` — full append-only history from Agent 12.
@@ -277,3 +294,23 @@ thresholds:
 | Zero escalation candidates | Write trend-report.md; skip Confluence append; note "no escalations this cycle" |
 | Confluence write fails | Surface auth error to PM; do not retry silently |
 | `outputs/trend/` missing | Create directory before writing |
+
+---
+
+## Self-Anneal (run after every execution)
+
+Append one entry to `outputs/trend/run-log.json` (create with `[]` if absent):
+
+```json
+{
+  "run_at": "YYYY-MM-DDTHH:MM",
+  "outcome": "success | partial | failed",
+  "failures": ["Step N: what broke and why"],
+  "constraints_discovered": ["e.g. signal-strength-store.json schema changed — confidence field now nested"]
+}
+```
+
+If `failures` or `constraints_discovered` is non-empty:
+- Update this SKILL.md with the new constraint (schema change, Jira API limit, config key rename)
+- If a script broke: fix it, test it, record the fix in `failures`
+- Do not discard errors silently — this directive must reflect what the system has learned

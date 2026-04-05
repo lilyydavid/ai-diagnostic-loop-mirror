@@ -4,16 +4,17 @@
 
 Agent 11 of the Phase 1 Intelligence Loop. Runs in parallel with 12-validation-agent after PM gate.
 Triangulates confirmed signals from Agent 10 against qualitative and quantitative feedback sources:
-Domo app reviews, Love Meter / NPS, CS tickets, Search Terms, and Confluence UX Research Repository.
+Domo app reviews, Love Meter / NPS, CS tickets, and Search Terms.
 
 Memory-first: checks `outputs/feedback/findings-store.json` before querying Domo.
-Writes a findings summary to Confluence and local files for handoff to Agent 13.
+Writes a findings summary to Confluence and local files for handoff to the diagnosis artifact and Agent 13.
 
 ```
 outputs/signal-agent/pipeline-context.md  ──┐
 config/domo.yml (feedback_datasets)         ├──▶  11-feedback-agent  ──▶  Confluence page
 config/domo.yml (kpi_datasets.discovery)    │                         ──▶  outputs/feedback/findings.md
-config/atlassian.yml (validation.research)  ┘                         ──▶  outputs/feedback/findings-store.json (append)
+config/domo.yml (kpi_datasets.discovery)    ┘                         ──▶  outputs/feedback/findings-store.json (append)
+                                                                      └──▶  outputs/diagnosis/diagnosis.json (via build_diagnosis_artifact.py)
 ```
 
 ---
@@ -42,15 +43,22 @@ Define the **secondary signal set** as: all other confirmed signals (other marke
 
 ### Step 2 — Memory check (findings store)
 
-Read `outputs/feedback/findings-store.json` if it exists.
-For each feedback source in `config/domo.yml → feedback_datasets`, check:
-- Is there an entry in the store for this source with `market: "AU"` (or relevant market)?
-- Is the entry's `queried_at` date within `config/domo.yml → thresholds.findings_staleness_days` (7 days)?
+Run the findings cache check script:
 
-If **fresh** (< 7 days old) for all sources: skip Domo queries for those sources, use cached findings.
-If **stale or absent**: proceed to Step 3.
+```bash
+python execution/check_findings_cache.py \
+  --store outputs/feedback/findings-store.json \
+  --config config/domo.yml \
+  --signal-date {today_YYYY-MM-DD}
+```
 
-Log which sources were served from cache vs re-queried.
+Parse the JSON output:
+- `fresh` list → skip Domo queries for those `source/market` pairs; use cached findings
+- `stale` list → re-query those sources in Step 3
+- `missing` list → query those sources in Step 3 (no prior data)
+
+Log which sources were served from cache vs re-queried (use `stderr` output from the script).
+If the script errors (missing config, bad JSON): halt — surface error to PM before querying Domo.
 
 ### Step 3 — Query Domo feedback sources (if stale)
 
@@ -93,45 +101,41 @@ Query: `SELECT search_term, SUM(frequency) AS search_volume, SUM(total_orders) A
 Note: this dataset does not have a country column — results are global. Filter interpretation to AU context by cross-referencing with AU session decline signals.
 Look for: rising search volume with low order conversion (discovery demand without fulfilment), drop in high-intent search terms, new brand/category terms appearing.
 
-### Step 4 — Search Confluence UX Research Repository
+### Step 4 — Theme and synthesise findings
 
-Source: `config/atlassian.yml → validation.research_sources[0]`
-- Space: `SEA`, Page ID: `63975620619`, Label: "UX Research Repository"
+**4a — Cluster verbatims (deterministic)**
 
-**Do not hardcode space keys or page IDs** — always read from config. If `research_sources` is empty, skip this step and note absence in output.
+Before reasoning over verbatims, run the clustering script on all collected review/suggestion text:
 
-**Important — repository architecture (confirmed 2026-03-10):**
-The UX Research Repository (page 63975620619) is a Jira-based directory. Research observations are stored as Jira issues in the `UXR` project — they are NOT stored as Confluence child pages and are NOT searchable via CQL.
-The Confluence page is a directory/index only — reading it confirms the taxonomy (touchpoints: Checkout, Cart, PDP, Search, Account etc.) but yields no research findings.
+```bash
+# Save sampled verbatims to .tmp/verbatims.json as:
+# [{"text": "...", "market": "AU", "platform": "iOS", "date": "2026-04-01"}, ...]
 
-Confluence search step (limited value):
-1. Run CQL: `space = "SEA" AND ancestor = 63975620619 AND (text ~ "checkout" OR text ~ "add to cart" OR text ~ "app")` to find any pages that do exist
-2. If 0 pages found: note architecture limitation and proceed — do not halt
+python execution/theme_feedback.py \
+  --verbatims-file .tmp/verbatims.json \
+  --max-themes 5 \
+  --output .tmp/themes.json
+```
 
-Jira UXR search (primary — do this instead):
-Use `mcp__mcp-atlassian__jira_search` with JQL:
-- `project = "UXR" AND type = Observation AND status = Posted AND "user journey[checkboxes]" = "Checkout" ORDER BY created DESC`
-- `project = "UXR" AND type = Observation AND status = Posted AND "touchpoint[checkboxes]" = "Cart" ORDER BY created DESC`
-- `project = "UXR" AND type = Observation AND status = Posted AND "touchpoint[checkboxes]" = "Search" ORDER BY created DESC`
+Read `.tmp/themes.json`. Use the `themes` array as the authoritative structure for Step 4b.
+Do not invent theme categories that the script did not find.
+If `unclustered_count > 0`: scan the unclustered entries manually for any high-severity signals (payment, security, identity) — add as a separate note, not a theme.
 
-For each Jira observation returned:
-- Read summary and description
-- Extract findings relevant to the primary signals
-- Note created date — flag if older than 18 months (reduced evidential weight)
-- Record: issue key, summary, direction (supports/contradicts/neutral), recency
+**4b — Synthesise findings**
 
-If Jira search returns 0 results or is inaccessible: note absence; do not halt.
+Organise findings into a structured synthesis using the script's theme output:
 
-### Step 5 — Theme and synthesise findings
-
-Organise findings into a structured synthesis:
+Also prepare diagnosis-layer evidence inputs for orchestration:
+- Which rival diagnosis does each finding support, contradict, or leave unresolved?
+- What segment, market, or journey step does the finding localise?
+- What evidence would weaken the currently favored diagnosis?
 
 **Primary signal findings** (AU focus — App ATC, iOS Sessions, Cart-to-Checkout):
 - What does qualitative feedback say about AU app experience?
 - Do app reviews correlate with ATC / session timing?
 - Does Love Meter show sentiment degradation?
 - Do search terms show intent–fulfilment gaps?
-- What does UX research say about AU checkout or app friction?
+- Do search terms show intent–fulfilment gaps correlated with AU signals?
 
 **Off-signal risk flags** (critical risks from any source NOT related to confirmed AU signals):
 Scan all feedback for strong risk signals beyond the focus area.
@@ -149,7 +153,35 @@ Do NOT suppress or deprioritise high-severity off-signal risks.
 - Medium: 1 source corroborates
 - Low: no corroboration found — flag as "needs further investigation"
 
-### Step 6 — Write outputs
+### Step 4b — PM review gate
+
+Before writing any output, surface the draft synthesis in chat:
+
+```
+*** AGENT 11 — FINDINGS REVIEW GATE ***
+
+Draft findings ready for {N} issue areas.
+
+Primary issues:
+  1. {plain-English issue area} — evidence quality: {High/Medium/Low}
+  2. {plain-English issue area} — evidence quality: {High/Medium/Low}
+
+Off-signal risks: {N found / none}
+
+Satisfied ratings: {markets with data / "no new data"}
+
+Reply "publish" to write to Confluence and local files.
+Reply "revise: {instruction}" to adjust before publishing.
+Reply "skip confluence" to write local files only.
+
+*** END GATE ***
+```
+
+Wait for PM response before proceeding to Step 5.
+
+---
+
+### Step 5 — Write outputs
 
 **6a — Confluence (primary output)**
 
@@ -159,24 +191,40 @@ Page ID: `64760119298` (PI space — "Cross references")
 Write using `mcp__mcp-atlassian__confluence_update_page`. Overwrite on each run.
 No source attribution. No PM-session content. No PII.
 
+**Confluence output rules — apply before every write:**
+- Do NOT include: hypothesis IDs (H-A, H-B, H-C), source status labels (FRESH/CACHED/CARD-ONLY), Evidence Quality table, pipeline step references, or agent names
+- Issue area headings must be plain English describing the user problem — never an internal code ID
+- Max 3 verbatim quotes per issue area; trim each to the key phrase (≤ 20 words)
+- Source Status table stays in `findings.md` only — never written to Confluence
+- Off-signal risks use plain-English headings — never "Risk 1 / Risk 2" or hypothesis IDs
+
 Format:
 ```
-# Feedback Triangulation — [date]
-Focus signal: [market + primary signals]
-Period: [date range]
+## What users are reporting — [date]
 
-## AU Signal Evidence
-[Themed findings per primary signal — app reviews, NPS, search terms, UX research]
+### [Issue area — plain English, e.g. "Checkout blocked by out-of-stock gift item"]
+[2–3 sentence synthesis of what users are experiencing.]
+- "[key phrase from verbatim quote, ≤ 20 words]" ([market], [platform], [date])
+- "[key phrase]" ([market], [platform], [date])
 
-## Evidence Quality
-| Signal | Evidence Quality | Sources |
-|---|---|---|
+### [Issue area 2 — e.g. "Payment charged but order not created"]
+[2–3 sentence synthesis.]
+- "[key phrase]" ([market], [platform], [date])
 
-## Off-Signal Risks
-[If any — clearly labelled, sourced, with recommended follow-up action]
+...
 
-## Gaps
-[Sources with no AU data or access failures]
+## Satisfaction ratings
+| Market | Rating | Responses | vs baseline |
+|---|---|---|---|
+| [market] | [avg] | [n] | [delta] |
+
+_Ratings reflect completed purchases only — users blocked before checkout are not captured._
+
+## Risks to watch
+- **[Risk name in plain English]** — [1–2 sentence description. Recommended action.]
+- ...
+
+_[date]_
 ```
 
 If Confluence write fails (401/403): surface auth error to PM, instruct token rotation. Do NOT skip.
@@ -189,7 +237,7 @@ Append a new entry per queried source:
 ```json
 {
   "queried_at": "YYYY-MM-DD",
-  "source": "app_reviews | love_meter | cs_tickets | search_terms | confluence_ux",
+  "source": "app_reviews | love_meter | cs_tickets | search_terms",
   "market": "AU",
   "signal_cycle": "YYYY-MM-DD",
   "summary": "1–2 sentence summary of key finding",
@@ -208,43 +256,43 @@ Page ID: `64760119298` (PI space)
 Overwrite each run. Format: themed sections per signal. No source attribution. No PII.
 
 ### `outputs/feedback/findings.md`
-Internal handoff to Agent 13. Overwrite each run.
+Internal handoff to Agent 13. Overwrite each run. May include pipeline-internal fields not written to Confluence.
 
 ```markdown
 # Feedback Findings — [date]
 Focus: [primary signals]
+Period: [date range]
 
-## AU Signal Evidence
-### App Store Reviews
-[summary + key themes]
+## User-reported issues
+### [Issue area — plain English]
+[Synthesis of what users are experiencing — 2–3 sentences]
+Key quotes:
+- "[key phrase]" ([market], [platform], [date])
+- "[key phrase]" ([market], [platform], [date])
 
-### Love Meter / NPS
-[AU avg rating + delta + key verbatim themes if available]
+### [Issue area 2]
+...
 
-### Search Terms
-[top intent patterns + any fulfilment gaps]
+## Satisfaction ratings
+| Market | Rating | Responses | vs baseline |
+|---|---|---|---|
+...
 
-### Confluence UX Research
-[matched pages + key findings or "none found"]
+## Risks to watch
+- **[Risk name]** — [description + recommended action]
 
-## Evidence Quality Summary
-| Signal | Evidence Quality | Supporting Sources |
+## Evidence quality (internal — not written to Confluence)
+| Issue area | Evidence strength | Sources |
 |---|---|---|
-| AU App ATC -21% | [High/Medium/Low] | [sources] |
-| AU iOS Sessions -17% | [High/Medium/Low] | [sources] |
-| AU Cart-to-Checkout -8.2% | [High/Medium/Low] | [sources] |
+| [plain description] | High / Medium / Low | [sources] |
 
-## Off-Signal Risks
-[Each risk: description | sources | recommended action]
-
-## Source Status
+## Source status (internal — not written to Confluence)
 | Source | Status | Notes |
 |---|---|---|
 | App Reviews | OK / FAILED / CACHED | [note] |
 | Love Meter | OK / FAILED / CACHED | [note] |
 | CS Tickets | OK / FAILED / CACHED | [note] |
 | Search Terms | OK / FAILED / CACHED | [note] |
-| Confluence UX Research | OK / NOT FOUND | [pages matched] |
 ```
 
 ### `outputs/feedback/findings-store.json`
@@ -265,8 +313,6 @@ thresholds:
   app_review_authenticity
   signal_threshold_pct     # used for off-signal risk qualification
 
-# config/atlassian.yml
-validation.research_sources:  # UX Research Repository (SEA space, page 63975620619)
 ```
 
 ## Permissions
@@ -274,7 +320,6 @@ validation.research_sources:  # UX Research Repository (SEA space, page 63975620
 - Read: `outputs/signal-agent/pipeline-context.md`
 - Read: `outputs/feedback/findings-store.json`
 - Read: registered Domo feedback datasets only (`feedback_datasets` + `kpi_datasets.discovery`)
-- Read: Confluence — all pages (search + get)
 - Write: Confluence — target page (short URL `wiki/x/AgABFA8`, resolved at runtime)
 - Write: `outputs/feedback/findings.md`
 - Write: `outputs/feedback/findings-store.json` (append-only)
@@ -289,8 +334,27 @@ validation.research_sources:  # UX Research Repository (SEA space, page 63975620
 | PII column detected in schema | Halt that dataset; surface to PM; skip to next source |
 | Unregistered dataset attempted | Hard error — surface to PM, do not query |
 | CS Tickets card has no dataset access | Note card-only limitation; record what is visible; continue |
-| Confluence UX search returns 0 results | Note absence; do not halt; mark as Low evidence for affected signals |
 | Confluence write fails (401/403) | Surface auth error to PM; instruct token rotation; do not skip |
 | Short URL unresolvable | Search PI space by title; create page if absent; surface resolved ID to PM |
 | findings-store.json does not exist | Create with empty array `[]`; append first entry |
 | All sources return no AU data | Surface to PM: "No AU feedback data found. Options: (1) widen date window, (2) check market filter columns, (3) proceed to Agent 13 without feedback evidence" |
+
+---
+
+## Self-Anneal (run after every execution)
+
+Append one entry to `outputs/feedback/run-log.json` (create with `[]` if absent):
+
+```json
+{
+  "run_at": "YYYY-MM-DDTHH:MM",
+  "outcome": "success | partial | failed",
+  "failures": ["Step N: what broke and why"],
+  "constraints_discovered": ["e.g. country_column in app_reviews is 'country_name' not 'country'"]
+}
+```
+
+If `failures` or `constraints_discovered` is non-empty:
+- Update this SKILL.md with the new constraint (schema correction, PII column, API limit)
+- If a script broke: fix it, test it, record the fix in `failures`
+- Do not discard errors silently — this directive must reflect what the system has learned

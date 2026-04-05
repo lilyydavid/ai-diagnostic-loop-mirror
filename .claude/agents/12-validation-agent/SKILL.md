@@ -2,13 +2,13 @@
 
 ## Role in pipeline
 
-Agent 12 of the Phase 1 Intelligence Loop. Runs after Agent 11.
+Agent 12 of the Phase 1 Intelligence Loop. Runs in parallel with Agent 11 after the Agent 10 PM gate.
 
 For each PM-confirmed hypothesis, maps the current FE/BE journey for the relevant funnel
 scope, then reads targeted code to understand the specific implementation. Proposes A/B
 test designs per hypothesis, scoped to PM-approved segments where applicable.
 
-Outputs feed Agent 13 directly.
+Outputs feed Agent 13 directly and also feed the shared diagnosis artifact used before prioritisation.
 
 **Local file system only. No Confluence, no Jira, no GitHub MCP, no Domo.**
 
@@ -19,6 +19,7 @@ outputs/feedback/segment-cuts.md               ──┤──▶  *** PM GATE (
 config/repos.yml  (repo metadata)              ──┤         ↓
 config/repos.local.yml  (local paths)          ──┘  12-validation-agent
                                                           ↓
+                                              outputs/diagnosis/diagnosis.json
                                               outputs/validation/experiment-designs.json
                                               outputs/validation/experiment-designs.md
                                               outputs/validation/read-audit.log
@@ -28,7 +29,7 @@ config/repos.local.yml  (local paths)          ──┘  12-validation-agent
 
 ## Trigger
 
-Spawned by `/intelligence-loop` after Agent 11 completes.
+Spawned by `/intelligence-loop` after the Agent 10 PM gate, in parallel with Agent 11.
 Standalone: "survey codebase", "design experiments", "run validation agent".
 
 ---
@@ -50,6 +51,23 @@ These rules apply at all times. No exceptions.
 ---
 
 ## Agent Steps
+
+### Step 0 — Validate input freshness
+
+Before loading any inputs, check that upstream outputs are current:
+
+```bash
+python execution/check_input_staleness.py \
+  --file outputs/signal-agent/pipeline-context.md \
+  --threshold-days 3
+```
+
+Read the JSON output:
+- If `stale: true`: surface to PM — "pipeline-context.md is {age_days} days old (last updated: {last_modified}). Proceed with stale inputs, or re-run Agent 10 first?" — halt until PM responds.
+- If `reason: file_not_found`: halt — "Run /intelligence-loop Step 1 first".
+- If `stale: false`: proceed.
+
+---
 
 ### Step 1 — Load inputs
 
@@ -240,6 +258,12 @@ Proceed with experiment design for confirmed + approved emergent hypotheses?
 Wait for PM response. Add approved emergent hypotheses to the working hypothesis list.
 Proceed to Step 5 with the full combined list.
 
+Before Step 5 completes, contribute diagnosis-layer outputs for orchestration:
+- localise the failure surface in code terms
+- identify at least 3 rival diagnoses spanning different causal classes where possible
+- attach code evidence to each rival diagnosis as support / contradict / unresolved
+- name the favored diagnosis and what code evidence would falsify it
+
 ---
 
 ### Step 5 — A/B test design (per hypothesis)
@@ -280,6 +304,12 @@ Existing experiment flag: {flag name or "none"}
 
 SP > 3 → classify backlog; note why quick-win not viable; still produce design for planning.
 
+**Atomic scope rule:** Each A/B test design describes exactly one testable change. If the fix naturally spans multiple components (e.g. monitoring job + CRM journeys + CS tooling), split into one design per component and assign sub-IDs continuing from the hypothesis ID (H-D → H-D1, H-D2, H-D3). Describe the dependency relationship: "H-D1 is a prerequisite for H-D2" or "H-D1 and H-D2 are independent." Never write a single `variant` description that covers multiple independent deliverables.
+
+**Cross-service coverage caveat:** If a hypothesis implicates a cross-service boundary but only one service was surveyed this cycle, set `confidence = Medium` at most regardless of what the surveyed code shows. State the gap explicitly in `confidence_reason`: "Only {surveyed_service} read this cycle; {unsurveyed_service} not surveyed — root cause may be upstream or downstream." This prevents mis-attribution when the real failure is in an unsurveyed service.
+
+**Luxola-specific rule:** For the `luxola` repo (Rails monolith), cite method-level references only — use `def method_name` as the `grep_anchor`. Do not cite line numbers for luxola files; they are unreliable given file size and edit frequency. If a specific constant, error class name, or feature flag string was observed, add it as a secondary `grep_anchor` in a separate entry.
+
 ---
 
 ### Step 6 — Score for Agent 13
@@ -305,7 +335,18 @@ For each hypothesis, assign scores based on code and segment evidence:
 
 ### Step 7 — Write outputs and read audit
 
-Write all outputs. Then write the read audit log.
+Before writing outputs, verify each `grep_anchor` you assigned in Step 5:
+- Run Grep for the anchor string in the file you cited
+- If found → anchor is valid, write as-is
+- If not found → remove or correct the anchor; downgrade `confidence` to Low for that entry
+
+Then write all outputs, followed by the read audit log.
+
+**grep_anchor rules:**
+- Every `code_evidence.files` entry must include a `grep_anchor`: a specific identifier you observed in that file — function name, method signature, constant, error class, or feature flag string
+- If you cannot name a specific identifier that you actually saw in the file, do not include the file in `code_evidence.files` — omit it and note the gap in `fragility_notes`
+- For luxola files: use method-level anchors only (`def method_name`). Do not rely on line numbers for luxola — they are unreliable given file size and edit frequency
+- `grep_anchor` is used by Agent 13 to re-verify claims before any Jira story is written
 
 ---
 
@@ -331,7 +372,12 @@ Write all outputs. Then write the read audit log.
       "code_evidence": {
         "repo": "sea-cart-ms",
         "files": [
-          { "path": "src/components/AddToCart.tsx", "function": "handleAddToCart", "lines": "42-89" }
+          {
+            "path": "src/components/AddToCart.tsx",
+            "function": "handleAddToCart",
+            "lines": "42-89",
+            "grep_anchor": "handleAddToCart"
+          }
         ],
         "current_behaviour": "description of what the code does today — no raw code",
         "existing_experiment": "flag name or null",
@@ -509,3 +555,23 @@ repos:
 | SP > 3 | Classify backlog; note why; still produce experiment design |
 | All hypotheses SP > 3 | Surface to PM: "No sprint-viable experiments found. All designs are backlog candidates." |
 | `outputs/validation/` missing | Create directory before writing |
+
+---
+
+## Self-Anneal (run after every execution)
+
+Append one entry to `outputs/validation/run-log.json` (create with `[]` if absent):
+
+```json
+{
+  "run_at": "YYYY-MM-DDTHH:MM",
+  "outcome": "success | partial | failed",
+  "failures": ["Step N: what broke and why"],
+  "constraints_discovered": ["e.g. grep_anchor 'handleAddToCart' not found — function renamed to 'onAddToCart'"]
+}
+```
+
+If `failures` or `constraints_discovered` is non-empty:
+- Update this SKILL.md with the new constraint (repo structure change, anchor naming convention, path mismatch)
+- If a script broke: fix it, test it, record the fix in `failures`
+- Do not discard errors silently — this directive must reflect what the system has learned

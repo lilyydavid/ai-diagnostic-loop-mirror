@@ -2,29 +2,26 @@
 
 ## Role in pipeline
 
-Agent 20 of the Inspiration Loop. First agent to run.
+Agent 20 of the new Inspiration Loop. Runs AFTER the Intelligence Loop diagnosis is complete.
 
-Combines three inputs — KPI signals (Agent 10), current sephora.com UX state, and a
-signal-scoped market scan — into a complete picture of what's broken, what we have today,
-and what's possible. Facilitates PM Gate 1: pre-mortem brainstorm and prototype idea.
-Produces a fully populated bet entry for Agent 21 to act on.
+Uses the diagnosis as context to understand what mechanism is broken, then combines it with three additional inputs — current sephora.com UX state and a signal-scoped market scan — to scout for prototype ideas that could fix the diagnosed issue. Facilitates PM Gate 1: pre-mortem brainstorm and prototype idea grounded in the diagnosis. Produces a fully populated bet entry recorded in bet-log, which feeds as input to Agent 13 (Prioritisation) as an alternative hypothesis candidate.
 
 ```
-PM triggers /inspiration-loop
+Intelligence Loop: 10 → 11+12 → diagnosis artifact
+          │
+  (PM may review diagnosis)
           │
   20-inspiration-scout
-  ├─ check cycle-state (resume or fresh?)
-  ├─ read Agent 10 signals          ← what's broken
-  ├─ browse sephora.com             ← what we have today
-  ├─ scoped market scan             ← what's possible
-  ├─ surface combined brief → Teams: inspiration_signal_ready
+  ├─ read diagnosis artifact             ← what mechanism is broken?
+  ├─ browse sephora.com                  ← what we have today
+  ├─ scoped market scan                  ← what's possible
+  ├─ surface combined brief grounded in diagnosis → Teams: inspiration_signal_ready
   │
-  *** PM GATE 1 — pre-mortem + prototype idea ***
-  ├─ facilitate pre-mortem brainstorm
-  ├─ PM names prototype idea, target metric, and odds
+  *** PM GATE 1 — pre-mortem + prototype idea (informed by diagnosis) ***
+  ├─ PM confirms failure scenario + idea + target metric + odds
   └─ write fully-populated bet entry + cycle-state
           │
-  21-bet-classifier
+  → Agent 13 (Prioritisation reads diagnosis + bets, ranks both)
 ```
 
 ## Trigger
@@ -72,30 +69,45 @@ Create `outputs/inspiration/` directory if it does not exist.
 
 ---
 
-### Step 2 — Load Agent 10 signals
+### Step 2 — Load diagnosis artifact (required)
+
+Read `outputs/diagnosis/diagnosis.md` (or `outputs/diagnosis/diagnosis.json`).
+
+If missing:
+> "Diagnosis artifact not found. Agent 20 runs after the Intelligence Loop diagnosis stage. Run `/intelligence-loop` first."
+Halt.
+
+Extract:
+- Favored diagnosis (what is broken)
+- Failure surface (where in the journey it breaks)
+- Mechanism summary (why it breaks)
+- Affected markets/segments
+
+This diagnosis context determines sephora.com browse scope (Step 4) and market scan scope (Step 5).
+
+---
+
+### Step 3 — Load Agent 10 signals (optional context)
 
 Read `outputs/signal-agent/signals.md`.
 
-If missing:
-> "Agent 10 signal output not found. Options: (1) run `/intelligence-loop` first, (2) proceed with sephora.com + market scan only. Reply 1 or 2."
-Wait. If "1": halt. If "2": note absence in combined brief; skip to Step 3.
+If missing: note absence and continue. Diagnosis is primary context.
 
 If present: check file age against `inspiration_loop.signal_staleness_days` (default: 7).
 If stale:
 > "Agent 10 signals are {N} days old (limit: {signal_staleness_days}). Proceed anyway or re-run intelligence loop first? Reply 'proceed' or 're-run'."
 If "proceed": note staleness in combined brief; continue.
 
-Extract:
-- All confirmed signals from `## Confirmed Signals` table — metric, delta, market, period
-- 2–3 observations from the funnel view
-- **Primary signal domain** — the metric type + market with the largest confirmed movement.
-  This determines the sephora.com browse scope (Step 3) and market scan scope (Step 4).
+Extract optional context:
+- Confirmed signal movement (metric, delta, market, period)
+- 2–3 funnel observations
 
 ---
 
-### Step 3 — Browse sephora.com — current UX state
+### Step 4 — Browse sephora.com — current UX state
 
-Navigate to the relevant sephora.com feature area based on the primary signal domain.
+Navigate to the relevant sephora.com feature area based on the diagnosis failure surface.
+If diagnosis scope is unclear, fall back to primary signal domain.
 
 | Signal domain | Browse target |
 |---|---|
@@ -111,7 +123,7 @@ observe the current state. Read visible UI text and layout — do not inspect so
 
 Extract as a plain-language description:
 - What the feature area looks like today
-- Any obvious gaps, missing affordances, or friction points relative to the signal
+- Any obvious gaps, missing affordances, or friction points relative to the diagnosis
 - Anything that would explain the metric movement if it were broken or suboptimal
 
 **Hallucination prevention:** describe only what is visibly present. Do not infer backend
@@ -120,9 +132,9 @@ limitation and proceed; do not fabricate an observation.
 
 ---
 
-### Step 4 — Scoped market scan
+### Step 5 — Scoped market scan
 
-Run web search scoped to the primary signal domain. Scope to SEA ecommerce and beauty.
+Run web search scoped to the diagnosis failure surface/mechanism. Scope to SEA ecommerce and beauty.
 
 If PM has already confirmed a hypothesis from an intelligence loop run: narrow to that space.
 
@@ -142,7 +154,7 @@ Extract 2–5 signals: competitor launches, industry innovations, UX patterns fr
 
 ---
 
-### Step 5 — Surface combined brief
+### Step 6 — Surface combined brief
 
 Present to PM before Gate 1:
 
@@ -170,7 +182,7 @@ Post to Teams (`inspiration_signal_ready`) if `teams.enabled: true`. If Teams fa
 
 ---
 
-### Step 6 — PM Gate 1 — Pre-mortem + Prototype Idea
+### Step 7 — PM Gate 1 — Pre-mortem + Prototype Idea
 
 Do not advance until PM has confirmed both the pre-mortem and the prototype idea.
 
@@ -220,19 +232,19 @@ Wait for both answers.
 
 ---
 
-### Step 7 — Write outputs
+### Step 8 — Write outputs
 
-**7a — Determine Bet ID**
+**8a — Determine Bet ID**
 Read `outputs/inspiration/bet-log.json` if it exists. Find the highest BET-NNN number and
 increment by 1. If no prior bets: start at BET-001.
 
-**7b — Append to `outputs/inspiration/bet-log.json`**
+**8b — Append to `outputs/inspiration/bet-log.json`**
 
 ```json
 {
   "bet_id": "BET-{NNN}",
   "run_date": "YYYY-MM-DD",
-  "signal": "{primary signal — metric, delta, market, period}",
+  "signal": "{diagnosis-linked signal context — metric, delta, market, period}",
   "current_state": "{plain-language description of sephora.com today in the relevant area}",
   "market_context": "{top market scan finding with source, or null if none found}",
   "prototype_idea": "{PM's stated prototype idea — exact words}",
@@ -244,14 +256,14 @@ increment by 1. If no prior bets: start at BET-001.
 
 If `bet-log.json` does not exist: create with `[]` then append.
 
-**7c — Update `outputs/inspiration/cycle-state.json`** (overwrite):
+**8c — Update `outputs/inspiration/cycle-state.json`** (overwrite):
 
 ```json
 {
   "run_date": "YYYY-MM-DD",
-  "current_step": 2,
+  "current_step": "complete",
   "loop_initiated": true,
-  "loop_completed": false,
+  "loop_completed": true,
   "gates_passed": [1],
   "active_bet_id": "BET-{NNN}",
   "target_metric": "{PM's stated metric}",
@@ -260,7 +272,7 @@ If `bet-log.json` does not exist: create with `[]` then append.
 }
 ```
 
-**7d — Write `outputs/inspiration/signal-brief.md`** (overwrite):
+**8d — Write `outputs/inspiration/signal-brief.md`** (overwrite):
 
 ```markdown
 # Inspiration Loop — Signal Brief {YYYY-MM-DD}
@@ -285,10 +297,37 @@ Confirm to PM:
 ```
 Gate 1 complete ✓
 BET-{NNN} recorded | Target: {metric} | Odds: {odds}
-Advancing to classification...
+Advancing to prioritisation...
 ```
 
----
+**8e — Write to Confluence**
+
+Target: PI space, `parent_id` from `config/atlassian.yml → page_id`
+Title: `Inspiration Brief — YYYY-MM-DD`
+Tool: `mcp__mcp-atlassian__confluence_create_page` (new page each run — do not overwrite)
+
+**Confluence output rules:**
+- Do NOT include: BET-NNN IDs, PM odds label, "Pre-mortem:" header, signal IDs (S1/S23), dataset codes, agent names, or internal loop terminology
+- PM's prototype idea goes verbatim under "What we want to try" — no wrapper language
+- If no market signals were found in Step 5: omit the "What others are doing" section entirely
+
+```markdown
+## Signal we're looking at
+{plain-English summary of the KPI signal — metric, direction, market, period. No signal IDs or dataset codes.}
+
+## What sephora.com looks like today
+{plain-language description of current UX state in the relevant area.
+If sephora.com was inaccessible: "Current state not observed this run."}
+
+## What others are doing
+- {Source name} — {1-sentence description of the relevant pattern}. {URL}
+- ...
+
+## What we want to try
+{PM's prototype idea — exact PM wording. No labels, no framing.}
+
+_[date]_
+```
 
 ## Output Contract
 
@@ -297,6 +336,7 @@ Advancing to classification...
 | Signal brief | `outputs/inspiration/signal-brief.md` | Overwrite each run |
 | Bet log | `outputs/inspiration/bet-log.json` | Append-only — one entry per run, fully populated |
 | Cycle state | `outputs/inspiration/cycle-state.json` | Overwrite — updated at each step |
+| Confluence brief | PI space — `Inspiration Brief — YYYY-MM-DD` | New page per run |
 | Teams notification | Webhook | `inspiration_signal_ready` event |
 
 ### Bet log entry — fields set by Agent 20 (all fully populated, no nulls)
@@ -305,7 +345,7 @@ Advancing to classification...
 |---|---|
 | `bet_id` | Sequential from prior entries |
 | `run_date` | Today |
-| `signal` | Agent 10 `signals.md` |
+| `signal` | Diagnosis-linked signal context (diagnosis + optional Agent 10 signals) |
 | `current_state` | sephora.com browse |
 | `market_context` | Web search |
 | `prototype_idea` | PM Gate 1 |
@@ -313,7 +353,7 @@ Advancing to classification...
 | `premortem` | PM Gate 1 |
 | `pm_odds` | PM Gate 1 |
 
-Downstream agents append their own fields. Agent 20 never leaves a field it owns as null.
+Agent 13 consumes bet entries as alternative hypothesis candidates during prioritisation.
 
 ---
 
@@ -332,29 +372,54 @@ teams:
 
 ## Permissions
 
-- Read: `outputs/signal-agent/signals.md`
+- Read: `outputs/diagnosis/diagnosis.md`
+- Read: `outputs/diagnosis/diagnosis.json`
+- Read: `outputs/signal-agent/signals.md` (optional context)
 - Read: `outputs/inspiration/cycle-state.json`
 - Read: `outputs/inspiration/bet-log.json`
 - Read: `config/atlassian.yml`
 - Browse: `sephora.com` — visible UI only; no source code inspection
-- Web search: scoped to primary signal domain
+- Web search: scoped to diagnosis failure surface / mechanism
 - Write: `outputs/inspiration/signal-brief.md` (overwrite)
 - Write: `outputs/inspiration/bet-log.json` (append-only)
 - Write: `outputs/inspiration/cycle-state.json` (overwrite)
 - Write: Teams webhook (if enabled)
-- No Domo queries — reads Agent 10 output only
-- No Confluence or Jira writes
+- No Domo queries — diagnosis-driven scouting with optional Agent 10 context
+- Write: Confluence — new child page in PI space under `page_id` from `config/atlassian.yml`
+- No Jira writes
 
 ## Error Handling
 
 | Error | Action |
 |---|---|
 | In-progress cycle-state found | Surface to PM: resume or fresh; wait for response |
-| `signals.md` missing | Surface options: re-run intelligence loop or proceed without; wait |
+| `diagnosis.md` / `diagnosis.json` missing | Halt and surface: run `/intelligence-loop` first |
+| `signals.md` missing | Proceed with diagnosis-only context; note in brief |
 | `signals.md` stale | Surface staleness; same options |
 | sephora.com inaccessible or region-blocked | Note limitation in brief; proceed; `current_state: "sephora.com not accessible"` in bet entry |
 | Web search returns no results | Note "No market signals found"; do not fabricate; continue |
 | PM does not confirm both pre-mortem and idea | Do not advance; re-surface Gate 1 prompts |
 | `bet-log.json` missing | Create with `[]`; append first entry |
 | `outputs/inspiration/` missing | Create directory before writing |
+| Confluence write fails (401/403) | Surface to PM; instruct token rotation; do not skip |
 | Teams notification fails | Log failure; continue; surface in chat |
+
+---
+
+## Self-Anneal (run after every execution)
+
+Append one entry to `outputs/inspiration/run-log.json` (create with `[]` if absent):
+
+```json
+{
+  "run_at": "YYYY-MM-DDTHH:MM",
+  "outcome": "success | partial | failed",
+  "failures": ["Step N: what broke and why"],
+  "constraints_discovered": ["e.g. sephora.com region-blocked, used cached screenshots"]
+}
+```
+
+If `failures` or `constraints_discovered` is non-empty:
+- Update this SKILL.md with the new constraint (access limitation, search tool gap, timing issue)
+- If a script broke: fix it, test it, record the fix in `failures`
+- Do not discard errors silently — this directive must reflect what the system has learned

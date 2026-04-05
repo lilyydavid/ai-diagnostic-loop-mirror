@@ -83,7 +83,32 @@ Extract per source:
 - Market / platform breakdown
 - Data freshness (`dataCurrentAt` or latest date in result rows)
 
+**Traffic channel query — run for every cycle alongside funnel datasets:**
+Source: `29a01e0e` (Domain KPI by Session) — uses `traffic_channel_lv1`, `traffic_channel_lv2`, `traffic_channel_lv3` dimensions (registered in `config/domo.yml → kpi_datasets.sessions[0].dimensions`).
+
+Query (current week):
+```sql
+SELECT country, device_type, traffic_channel_lv1, traffic_channel_lv2,
+  SUM(journey_sessions) AS sessions, SUM(order_sessions) AS orders
+FROM table
+WHERE date >= [current_week_start] AND date <= [current_week_end]
+GROUP BY country, device_type, traffic_channel_lv1, traffic_channel_lv2
+ORDER BY country, device_type, sessions DESC
+```
+Run an identical query for the prior week window for WoW comparison.
+
+From the results, compute per market × channel:
+- Session share % = channel sessions / total journey sessions
+- CVR% = order_sessions / journey_sessions
+- WoW session delta % and WoW CVR delta %
+
+Flag channels where session share shifted ≥ 10 pp WoW (large mix shift — affects aggregate CVR interpretation).
+Flag channels where CVR dropped ≥ 5 pp WoW (channel-specific conversion failure).
+Known context: Retention channel surges during member campaigns are expected — note if lv1 = "Retention" and delta is large; surface to PM to confirm whether a campaign was running.
+
 ### Step 4 — Apply signal threshold
+
+Prefer deterministic execution for this post-query stage. After raw KPI values are collected, first run `execution/normalize_signal_inputs.py` per `directives/normalize_signal_inputs.md` to flatten query results into a stable payload. Then run `execution/build_signal_report.py` per `directives/build_signal_report.md` to apply config-driven thresholds and produce stable `signals.md` and `pipeline-context.md` outputs.
 
 For each metric, look up threshold from `config/domo.yml → thresholds.signal_threshold_pct`.
 Match metric to type (`conversion_rate`, `sessions`, `revenue`, `nps_score`, `ratings`).
@@ -103,6 +128,8 @@ If any check triggers: mark metric `suspicious: true` with reason.
 `action: surface_to_pm` — PM decides whether to include or exclude from signal list.
 
 ### Step 6 — Build funnel tables
+
+Prefer deterministic execution here as well. Once the required aggregated dataset rows are available, run `execution/calculate_funnel_tables.py` per `directives/calculate_funnel_tables.md` to build the `funnel_tables` payload instead of hand-formatting these tables in orchestration.
 
 After querying KPI sources, build two funnel tables from registered datasets. Always include in output regardless of signal threshold.
 
@@ -159,6 +186,14 @@ Present:
 
 Sources queried: [n] | New cards detected: [n] | Period: [date range]
 ──────────────────────────────────────────────
+── TRAFFIC MIX ────────────────────────────────
+Table T — Session share & CVR by traffic channel (29a01e0e, current week vs prior week)
+| Market | Platform | Channel (lv1) | Sub-channel (lv2) | Sessions | Share% | CVR% | WoW Sessions | WoW CVR |
+(sorted by market, then sessions desc)
+⚠️  [channel]: session share shifted [n] pp WoW — [interpretation note]
+⚠️  [channel]: CVR dropped [n] pp WoW — [interpretation note]
+Note: Retention channel surges during member campaigns are expected — confirm with PM if large.
+──────────────────────────────────────────────
 ── FUNNEL VIEW ────────────────────────────────
 Table 1a — App session funnel (29a01e0e)
 Table 1b — Web session funnel (29a01e0e)
@@ -170,13 +205,64 @@ Table 3 — User checkout deep-dive Cart→Checkout→Payment→Order (46ef93fa)
 PM gate — ask: "Which of these signals do you want to take forward into triangulation? Confirm or adjust."
 Wait for explicit PM response. Do not auto-advance.
 
-### Step 8 — Write outputs
+### Step 8 — Write outputs via deterministic pipeline
 
-For each signal in `signals.md`, set `PM Confirmed = true` if the PM explicitly confirmed it, `false` if excluded or adjusted out.
+After PM confirms the signal list, run the deterministic pipeline to produce authoritative output files. Do not hand-write `signals.md` or `pipeline-context.md` directly.
 
-Write confirmed signal list to `outputs/signal-agent/signals.md` (overwrite each run).
-Write pipeline context to `outputs/signal-agent/pipeline-context.md` (overwrite each run).
-Include both funnel tables in `signals.md` under a `## Funnel View` section.
+**Step 8a — Serialize Domo results to `.tmp/raw-signal-input.json`**
+
+Build a JSON object in this shape and write it to `.tmp/raw-signal-input.json`:
+
+```json
+{
+  "run_date": "YYYY-MM-DD",
+  "period_label": "Mar 28–Apr 3 vs Mar 21–27",
+  "extracts": [
+    {
+      "source_id": "29a01e0e",
+      "source_name": "Domain KPI by session",
+      "columns": ["country", "device_type", "journey_sessions", "order_sessions"],
+      "rows": [[...raw Domo rows as returned by query-dataset...]],
+      "mappings": {
+        "market": "country",
+        "platform": "device_type",
+        "metric": {"const": "CVR"},
+        "metric_type": {"const": "conversion_rate"},
+        "value": "order_sessions",
+        "previous_value": null
+      }
+    }
+  ],
+  "pm_confirmed_signals": ["S1", "S2"],
+  "pm_excluded_signals": ["S3"],
+  "carry_forward": [],
+  "hypotheses": [],
+  "notes": []
+}
+```
+
+Key rules for `extracts`:
+- `columns`: the `columns` array from the Domo `query-dataset` response — required when rows are value arrays (columnar format). The normalizer auto-converts.
+- `rows`: the `rows` array directly from `query-dataset` response — no reshaping needed.
+- Include one extract per dataset queried. For WoW comparisons, include current and prior week as separate extracts with a `period` field to distinguish them, or pre-compute `previous_value` in the mapping.
+- `funnel_inputs` (optional): separate top-level key for structured funnel table inputs consumed by `calculate_funnel_tables.py`.
+
+**Step 8b — Run the pipeline script**
+
+```bash
+mkdir -p .tmp outputs/signal-agent
+python3 execution/run_signal_pipeline.py \
+  --input .tmp/raw-signal-input.json \
+  --config config/domo.yml \
+  --json-output outputs/signal-agent/signal-report.json \
+  --signals-output outputs/signal-agent/signals.md \
+  --pipeline-output outputs/signal-agent/pipeline-context.md \
+  --normalized-output .tmp/normalized-signal-input.json
+```
+
+Treat script output as authoritative. Do not manually overwrite `signals.md` or `pipeline-context.md` after this point.
+
+If the script errors: read stderr, fix the input JSON, re-run. Update this directive with any new edge cases found.
 
 ---
 
@@ -296,6 +382,11 @@ Internal record — overwrite each run. Mirrors Confluence content for pipeline 
 ## Suspicious Flags
 [metric]: [reason] — PM decision: [include / exclude]
 
+## Traffic Mix
+| Market | Platform | Channel (lv1) | Sub-channel (lv2) | Sessions | Share% | CVR% | WoW Sessions | WoW CVR |
+...
+[channel shift flags and campaign context notes]
+
 ## Funnel View
 ### Session Funnel (all markets)
 | Market | Platform | Sessions | PDP% | ATC% | Cart% | CVR% |
@@ -358,3 +449,23 @@ thresholds.suspicious_metric           # flag rules
 | No approved sources in registry | Halt loop; tell PM to register at least one KPI source in `config/domo.yml` |
 | No signals above threshold | Surface to PM: "No signals exceeded threshold. Options: (1) lower threshold in config, (2) widen query window, (3) proceed to triangulation without signal anchor" |
 | PM gate timeout / no response | Park loop; write current state to pipeline-context; resume on next run |
+
+---
+
+## Self-Anneal (run after every execution)
+
+Append one entry to `outputs/signal-agent/run-log.json` (create with `[]` if absent):
+
+```json
+{
+  "run_at": "YYYY-MM-DDTHH:MM",
+  "outcome": "success | partial | failed",
+  "failures": ["Step N: what broke and why"],
+  "constraints_discovered": ["e.g. column 'date' renamed to 'date_local' in dataset X"]
+}
+```
+
+If `failures` or `constraints_discovered` is non-empty:
+- Update this SKILL.md with the new constraint (schema correction, API limit, timing, tool behaviour)
+- If a script broke: fix it, test it, record the fix in `failures`
+- Do not discard errors silently — this directive must reflect what the system has learned

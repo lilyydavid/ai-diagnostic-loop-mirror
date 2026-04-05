@@ -4,174 +4,202 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Internal 3-step intelligence loop for SEA ecommerce PMs across all KPIs and markets (SG, MY, AU, NZ, PH, HK, TH, ID). Agents read from Domo, Confluence, and Jira via MCP, process signals, and write structured outputs consumed by downstream agents.
+PM diagnostic tool with 2 complementary loops for SEA ecommerce PMs across all KPIs and markets (SG, MY, AU, NZ, PH, HK, TH, ID):
 
-**Phase 1 (current) — Intelligence Loop:** PM-triggered, Domo MCP, no screenshots required.
-**Phase 2 (not yet active) — Action Layer:** GitHub effort estimation + Jira story creation. Unlocked after ≥3 loops completed with ≥2/3 hypotheses actioned per loop.
+**Intelligence Loop (Phase 1 — active):** 4-step diagnostic loop.
+1. **Signal** — query configured Domo KPI datasets; surface which metrics moved, where, by how much
+2. **Diagnose** — two parallel sub-steps: (2a) Domo feedback datasets for corroborating voice-of-customer evidence; (2b) independent code review to localise the failure and map mechanisms
+3. **Hypothesise** — convert the favored diagnosis into rival-tested, falsifiable hypotheses and A/B experiment designs
+4. **Prioritise** — score and rank experiments by confidence × impact × scope; PM approves which advance
+
+**Inspiration Loop (active — parallel to Phase 1):** PM-triggered ideation loop that produces prototype bets.
+1. **Scout** — load Agent 10 signals (what's broken) + browse SEA frontends (what we have today) + scoped market scan (what's possible)
+2. **Gate 1** — PM confirms pre-mortem scenario and prototype idea; bet recorded with target metric and odds
+3. **Classify** — bet classified by type (pain / shine / pain+shine); drives downstream loop investment
+4. Downstream: prototype builder → launch validator → fit tracker (agents 22–24, in design)
+
+Both loops feed Agent 13: the Intelligence Loop provides a diagnosis artifact plus code-grounded experiment designs; the Inspiration Loop provides market context and PM odds as optional enrichment for scoring and tiebreaking.
+
+Every gate is human-approved. Domo evidence absence is a hard stop — the system halts and asks, it does not infer. Phase 2 adds the action layer (GitHub effort estimation + Jira story creation) once Phase 1 is proven.
+
+## Operating Model
+
+This repo uses a 3-layer architecture that separates concerns to maximise reliability. LLMs are probabilistic; business logic is deterministic. This system fixes that mismatch.
+
+### 3-Layer Architecture
+
+**Layer 1 — Directive (What to do)**
+SOPs written in Markdown, living in `directives/` and agent `SKILL.md` files. Define goals, inputs, tools/scripts to use, outputs, and edge cases. Natural language instructions, like you'd give a mid-level employee.
+
+**Layer 2 — Orchestration (Decision making)**
+This is Claude. Job: intelligent routing. Read directives, call execution tools in the right order, handle errors, ask for clarification, update directives with learnings. Claude is the glue between intent and execution — don't try to do the work manually, read the directive and run the right script.
+
+**Layer 3 — Execution (Doing the work)**
+Deterministic scripts in `execution/` (Python) and `scripts/` (Node). Handle API calls, data processing, file operations. Reliable, testable, fast. Use scripts instead of manual work.
+
+**Why this works:** if Claude does everything itself, errors compound. 90% accuracy per step = 59% success over 5 steps. Push complexity into deterministic code so Claude can focus on decision-making.
+
+### Operating Principles
+
+**1. Check for tools first**
+Before writing a script, check `execution/` per the relevant directive. Only create new scripts if none exist.
+
+**2. Self-anneal when things break**
+- Read error message and stack trace
+- Fix the script and test it again (unless it uses paid tokens/credits — check with user first)
+- Update the directive with what you learned (API limits, timing, edge cases)
+
+**3. Update directives as you learn**
+Directives are living documents. When you discover API constraints, better approaches, common errors, or timing expectations — update the directive. Don't create or overwrite directives without asking unless explicitly told to.
+
+**4. Optimise for context window**
+- Apply `directives/context_window_budget.md` on all multi-step runs
+- Load minimum scope first (directive + script + active outputs), then expand only when blocked
+- Prefer deterministic summarisation in `execution/` over long narrative reasoning
+- Avoid replaying unchanged history; reference prior artifacts and record only deltas
+
+### Self-annealing loop
+
+Errors are learning opportunities. When something breaks:
+1. Fix it
+2. Update the tool
+3. Test the tool, make sure it works
+4. Update directive to include the new flow
+5. System is now stronger
+
+### File Organisation
+
+**Deliverables vs Intermediates:**
+- **Deliverables**: Confluence pages, Google Sheets/Slides, or other cloud outputs the user can access
+- **Intermediates**: Temporary files needed during processing
+
+**Directory structure:**
+- `.tmp/` — All intermediate files (scraped data, temp exports). Never commit, always regenerated.
+- `execution/` — Python scripts (deterministic tools)
+- `directives/` — SOPs in Markdown (the instruction set)
+- `scripts/` — Node.js scripts (e.g. Puppeteer capture)
+- `.env` — Environment variables and API keys (git-ignored)
+- `outputs/` — Agent-generated files (operational data)
+
+**Key principle:** Local files are only for processing. Deliverables live in cloud services (Confluence, Google Sheets, etc.) where the user can access them. Everything in `.tmp/` can be deleted and regenerated.
+
+### Cloud Webhooks (Modal)
+
+Supports event-driven execution via Modal webhooks. Each webhook maps to exactly one directive with scoped tool access.
+
+When adding a webhook:
+1. Read `directives/add_webhook.md` for complete instructions
+2. Create the directive file in `directives/`
+3. Add entry to `execution/webhooks.json`
+4. Deploy: `modal deploy execution/modal_webhook.py`
+5. Test the endpoint
+
+Key files: `execution/webhooks.json`, `execution/modal_webhook.py`, `directives/add_webhook.md`
+
+### Model preference
+
+Use the latest Claude model optimised for reasoning and coding. Currently `claude-opus-4-6`. Update this note when a newer reasoning-optimised model supersedes it.
 
 ## Architecture
 
-### Phase 1 — Intelligence Loop (current)
-Triggered by PM running `/intelligence-loop`. No screenshots required.
+Full architecture with diagrams, state/persistence model, config registry, and architectural decisions: `_bmad-output/planning-artifacts/architecture.md`
 
-```
-PM triggers /intelligence-loop
-        │
-  10-signal-agent          ← Step 1: KPI signal from Domo (datasets, pages, cards)
-        │  PM gate
-        ├──────────────────────────────┐
-  11-feedback-agent            12-validation-agent
-  (Domo feedback — primary)    (Confluence — secondary, skip if absent)
-        └──────────────────────────────┘
-                   │  PM gate
-           13-prioritisation-agent    ← Step 3: dedup → score → rank → PM approves
-                   │
-          Prioritised hypothesis list
-                   │
-           15-trend-escalation-agent  ← Trend tracking + priority debt escalation
+### Active loops
 
-[Background — weekly]
-  14-weekly-refresh  →  outputs/feedback/findings-store.json (append-only)
-```
-
-Outputs per step:
-- Signal: `outputs/signal-agent/` — signal report surfaced to PM
-- Feedback: `outputs/feedback/findings.md` + Confluence page 64760119298 update
-- Validation: `outputs/validation/experiment-designs.json` + `experiment-designs.md`
-- Prioritisation: `outputs/prioritisation/ranked-hypotheses.json` + PM approval gate
-- Trend: `outputs/trend/signal-trend.json` + `trend-report.md` + Confluence escalation brief
-
-State: `outputs/prioritisation/ranked-hypotheses.json` — append-only history across cycles.
-Config: `config/domo.yml` — dataset/page/card registry, signal thresholds, query windows, PII exclusion list.
-
-### Phase 2 — Action Layer (not yet active)
-**Unlock condition:** ≥3 Intelligence Loop cycles completed with ≥2/3 hypotheses actioned per loop.
-
-Orchestrated by `/growth-engineer` command. Screenshots dropped in `.claude/tmp-screenshots/funnel-weekly/`.
-
-```
-[Discovery — Signal Collection]
-  Screenshot → 05-funnel-monitor → 06-market-intel
-                    ↓                    ↓
-          Confluence page update     signals.md
-          (metrics + hypotheses)
-                    ↓
-              *** GATE 1 ***
-         Human reviews Confluence
-         Confirms hypotheses in chat
-
-[Validation]
-  Screenshot → 05-funnel-monitor (update) → 07-validation
-                    ↓
-          Confluence page update
-          (validated + ranked hypotheses)
-                    ↓
-              *** GATE 2 ***
-         Human approves Sprint Candidates
-         in chat before tickets are created
-
-[Delivery]
-  Screenshot → 05-funnel-monitor (update) → 08-github-reader → 09-jira-writer
-                    ↓                                               ↓
-          Confluence page update                           BAAPP stories created
-          (Sprint Actions + Jira links)
-```
-
-State: `outputs/growth-engineer/cycle-state.json` — stores approved hypotheses per gate, resets monthly.
-Reasoning: REASON() protocol applied at every hypothesis decision point (see `.claude/skills/growth-engineer.md`).
-
-Each agent is defined by a `SKILL.md` under `.claude/agents/<NN>-<name>/`.
+| Loop | Trigger | Agents | Status |
+|---|---|---|---|
+| Intelligence Loop | `/intelligence-loop` | 10 → 11+12 → diagnosis artifact → 20 (inspiration scout reads diagnosis) → bets → 13 → 15 (PM gates at each step) | Active |
+| Inspiration Loop | `/inspiration-loop` | Spawned by intelligence loop after diagnosis; Agent 20 scouts prototype ideas grounded in diagnosis context | Active (Agent 20 live) |
+| Action Layer | `/growth-engineer` | 05 → 06 → 07 → 08 → 09 (gates at each week) | Not yet active |
+| Weekly Refresh | `/weekly-refresh` | 14 | Active (background) |
 
 ## Available Agents
 
-| Skill | Trigger | Description |
-|---|---|---|
-| `05-funnel-monitor` | `/funnel-monitor` | Weekly ecommerce funnel report — Runs every Thursday, covers prior Thu→Wed |
-| `06-market-intel` | `/market-intel` | SEA web + social scanner — brand sentiment, competitor activity, ecommerce trends |
-| `07-validation` | `/validate-hypotheses` | Cross-references hypotheses with Confluence research + synthetic user modeling |
-| `08-github-reader` | `/github-reader` | Reads sephora-asia GitHub repos to find code relevant to validated hypotheses |
-| `09-jira-writer` | `/jira-writer` | Creates quick-win Jira stories (≤3 SP) and backlog stories under BAAPP-461 |
-| `10-signal-agent` | `/intelligence-loop` | Step 1 — queries registered Domo KPI sources; surfaces metric movements; PM gate. Hidden: `/sharpen` for first-principles coaching |
-| `11-feedback-agent` | spawned by `/intelligence-loop` | Step 2a — memory-first Domo feedback triangulation (app reviews, Love Meter, CS tickets, Search Terms) + Confluence UX research search; off-signal risk flagging; writes to Confluence page 64760119298 |
-| `12-validation-agent` | spawned by `/intelligence-loop` | Step 2b — surveys local codebase (PM selects repo); reads current implementation for each hypothesis; proposes FE or backend A/B test designs; scores Confidence/Impact/Scope from code evidence; writes `experiment-designs.json` + `experiment-designs.md` for Agent 13 |
-| `13-prioritisation-agent` | spawned by `/intelligence-loop` | Step 3 — scores each failure on Confidence (from Agent 12) × Impact (Domo `29a01e0e`, PM-gated) × Scope (PM scope-intake file, Agent 08 optional enrichment); ranks by priority score; PM approval gate before Jira handoff; tracks failure lineage across cycles |
-| `14-weekly-refresh` | `/weekly-refresh` | Background — refreshes findings store for all registered feedback datasets |
-| `15-trend-escalation-agent` | spawned by `/intelligence-loop` after Agent 13 | Tracks confidence and priority score trends across cycles; calculates priority debt (impact × confidence × cycles unactioned); escalates persistently ignored failures to PM via Confluence brief; no GMV assumptions |
-
-## Skills (orchestrators — run in main conversation context)
-
-| Skill | Trigger | Description |
-|---|---|---|
-| `intelligence-loop` | `/intelligence-loop` | **Phase 1 orchestrator** — runs agents 10 → 11+12 → 13 → 15 with PM gates at each step |
-| `growth-engineer` | `/growth-engineer` | **Phase 2 orchestrator** (Discovery → Validation → Delivery) — spawns agents 05–09. Drop screenshot in `.claude/tmp-screenshots/funnel-weekly/` then run |
-
-## Key Files
-
-- `.mcp.json` — MCP server credentials (git-ignored). Contains `mcp-atlassian`, `github`, `domo-mcp`, and `chrome-devtools` MCP configs. Base URL: `https://sephora-asia.atlassian.net`
-- `config/atlassian.yml` — Global Atlassian config defaults (committed). See Config Layers below.
-- `config/domo.yml` — Domo dataset/page/card registry, signal thresholds, PII exclusion list (committed).
-- `.claude/rules/` — Project rules applied per context (atlassian, agents, workspace-setup)
-- `outputs/<agent-name>/` — All agent-generated files live here
-
-## Config Layers
-
-Agent config is resolved in priority order — later layers override earlier ones:
-
-| File | Level | Committed? | Purpose |
+| Agent | Trigger | Phase | Description |
 |---|---|---|---|
-| `config/atlassian.yml` | Global | Yes | Shared defaults for all users |
-| `config/atlassian.team.yml` | Team | Yes (optional) | Team-scoped overrides (e.g. different Jira project) |
-| `config/atlassian.local.yml` | Local | No (git-ignored) | Personal overrides (test epics, sandbox pages) |
+| `10-signal-agent` | `/intelligence-loop` | Intelligence | KPI signal from Domo; PM gate. Hidden: `/sharpen` |
+| `11-feedback-agent` | spawned by loop | Intelligence | Domo feedback triangulation; contributes evidence to diagnosis artifact; uses `check_findings_cache.py` |
+| `12-validation-agent` | spawned by loop | Intelligence | Local codebase survey; localises mechanism; derives hypotheses and A/B designs; uses `score_hypotheses.py`, `index_repos.py` |
+| `13-prioritisation-agent` | spawned by loop | Intelligence | Consumes diagnosis artifact + experiment designs; C×I×S scoring; code grounding; Jira; lineage; uses `score_hypotheses.py`, `verify_code_grounding.py`, `resolve_config.py` |
+| `14-weekly-refresh` | `/weekly-refresh` | Intelligence | Background findings store refresh |
+| `15-trend-escalation-agent` | spawned after 13 | Intelligence | Priority debt + escalation; uses `calculate_priority_debt.py` |
+| `20-inspiration-scout` | `/inspiration-loop` | Inspiration | Signal + frontend browse + market scan; PM Gate 1; produces bet-log for intelligence loop input; uses `check_signals_staleness.py` |
+| `05-funnel-monitor` | `/funnel-monitor` | Action | Weekly ecommerce funnel report (Thu→Wed) |
+| `06-market-intel` | `/market-intel` | Action | SEA web + social scanner |
+| `07-validation` | `/validate-hypotheses` | Action | Confluence research + synthetic user modeling; uses `score_hypotheses.py` |
+| `08-github-reader` | `/github-reader` | Action | Code context per hypothesis; uses `index_repos.py` |
+| `09-jira-writer` | `/jira-writer` | Action | Jira story creation; uses `resolve_config.py` |
 
-To create a local override: `cp config/atlassian.local.yml.example config/atlassian.local.yml`
+## Skills (orchestrators)
 
-### Growth agent config (in `atlassian.yml`)
-```yaml
-growth_agent:
-  jira_project_key: "BAAPP"
-  epic_key: "BAAPP-461"                  # Stories created as children of this epic
-  epic_summary: "Growth Agent tasks"
-  story_labels: ["growth-agent", "quick-win"]
-  backlog_label: "growth-backlog"
-  screenshot_watch_folder: ".claude/tmp-screenshots/funnel-weekly"  # Drop + delete pattern
+Skills are **Layer 1 directives** that live in `.claude/skills/`. They define which agents to spawn, in what order, with what gates. Skills delegate to agents; agents delegate to `execution/` scripts. This table is a registry — orchestration logic lives in each skill file.
+
+```
+Skill (Layer 1 — directive)  → which agents, what order, what gates
+  Agent (Layer 1 — directive)  → what steps, what MCP calls, what scripts
+    Script (Layer 3 — execution) → deterministic computation
 ```
 
-## MCP Servers
+| Skill | Trigger | Spawns |
+|---|---|---|
+| `intelligence-loop` | `/intelligence-loop` | 10 → 11+12 → 13 → 15 with PM gates |
+| `inspiration-loop` | `/inspiration-loop` | 20 → 21 with PM Gate 1 |
+| `growth-engineer` | `/growth-engineer` | 05 → (records bets → fed to intelligence loop)ith gates |
+| `puppeteer` | `/puppeteer` | Runs `scripts/domo-capture.js` — automates Domo screenshot capture |
 
-Four MCP servers are configured in `.mcp.json`:
+## Key Files & References
 
-- `mcp-atlassian` (`uvx mcp-atlassian`) — Primary. Used for all Confluence reads/writes and Jira. Use `mcp__mcp-atlassian__confluence_update_page` for Confluence writes. Auth: Basic (username + API token).
-- `Atlassian` (Rovo) — OAuth-based. Use for search/fetch only. Has no Confluence write tool.
-- `github` (`npx @modelcontextprotocol/server-github`) — Read access to `sephora-asia` org repos. Token scopes: `audit_log, repo`.
-- `domo-mcp` (node `dist/index.js`) — Domo MCP server. `data` scope for datasets; `dashboard` scope for pages/cards. Use `get-dashboard-signals` for page sources — NOT `get-page-cards` or `get-card` alone (those return metadata only, not live values). All sources must be registered in `config/domo.yml` before querying.
+- `.mcp.json` — MCP credentials (git-ignored). See `directives/mcp_servers.md` for tool selection, scopes, and error handling.
+- `config/atlassian.yml` — Atlassian defaults. Config layers resolved by `execution/resolve_config.py` — see `directives/resolve_config.md`.
+- `config/domo.yml` — Domo registry, signal thresholds, PII exclusion list.
+- `.claude/rules/` — Auto-loaded per context: `atlassian` (permissions), `agents` (conventions + overwrite/append list), `workspace-setup` (onboarding).
+- `outputs/<agent-name>/` — Agent-generated files.
+- `outputs/diagnosis/` — Shared diagnosis artifact between diagnosis and prioritisation stages.
+- `directives/` — SOPs for all execution scripts and operational procedures.
+- `execution/` — Deterministic Python scripts (Layer 3).
+- `scripts/` — Node.js scripts (Puppeteer, etc.).
 
-Prefer `mcp__mcp-atlassian__*` for all Atlassian operations. If write returns 401, the MCP server needs a restart (token rotation requires server restart to pick up new credentials).
+## Agent Cognition Model
 
-## Agent Conventions
+**Context:** This directive governs the cognitive framework and optimization parameters for all agents within the diagnostic Orchestration and Execution layers.
 
-### Adding an agent
-1. Create `.claude/agents/<NN>-<name>/SKILL.md` with: Role in pipeline, Trigger, Agent Steps, Output Contract, Configuration, Permissions, Error Handling.
-2. Register in the agents table above.
+**Objective:** To prevent agents from collapsing the distance between observation and explanation. Agents must optimize for disciplined causal interpretation, prioritizing the discovery of *latent conditions* over the patching of *active failures*.
 
-### SKILL.md must include
-- Explicit output contract: file paths, formats, `overwrite` vs `append` behavior
-- Suspicious metric filter rule before writing any outputs
-- Error handling for every failure mode (404, 401, missing data)
+---
 
-### Output contract conventions
-- `pipeline-context.md`, `validation-hypotheses.md`, `lno.md` — **overwrite** each run
-- `memory/metrics-history.json`, `findings-store.json`, `ranked-hypotheses.json` — **append only**, never overwrite history
-- No source attribution in stakeholder-facing Confluence pages
-- Suspicious metrics (YoY >50% with no known cause, value = 0%, identical across all segments) go to Data Quality Notes only — excluded from all tables and risk register
+### 1. Core Reasoning Constraints
+All agents in this repository must apply the following logical constraints when processing data, generating hypotheses, or recommending actions.
 
-### Confluence image extraction
-- Download attachments via `/wiki/rest/api/content/{pageId}/child/attachment?limit=50&expand=version`
-- Filter to only attachments where `version.when` starts with current month (`YYYY-MM`)
-- Download with `curl -L` to follow redirects
-- Confidence: High = value + label + date range all readable; Medium = value readable; Low = skip
+### 1.1. Separate Observation from Interpretation
+* **Rule:** Agents must strictly isolate raw signals from causal narratives. 
+* **Enforcement:** "Adoption is down" is an observation. "Visibility is weak" is an interpretation. Agents must never treat an interpretation as a factual prior. 
 
-## Rules
+### 1.2. Reject Proximate-Cause Fixation
+* **Rule:** Agents must not assume the nearest visible bottleneck is the root cause. 
+* **Enforcement:** If a metric drops at a specific UI step (the active failure), the agent must query upstream constraints (the latent conditions)—such as mental model mismatches, workflow design, policy ambiguity, or incentive structures—that made the failure likely.
 
-- **atlassian** — Confluence/Jira permission boundaries. May write only to configured `page_id`. Token rotation: https://id.atlassian.com/manage-profile/security/api-tokens
-- **agents** — Skill file structure and output file conventions
-- **workspace-setup** — Onboarding a new team or Atlassian space
+### 1.3. Ban "Human Error" as a Terminal Diagnosis
+* **Rule:** "User confusion" or "operator mistake" are labels, not explanations. 
+* **Enforcement:** If an agent reaches a conclusion of human error, it must forcefully continue inquiry to explain *what system conditions made that mistake easy, likely, or hard to detect*.
+
+---
+
+### 2. Optimization Mandates for Hypothesis Generation
+When the agent train is tasked with explaining a product symptom or metric anomaly, it must optimize its output according to the following rules:
+
+* **Require Cross-Class Rival Explanations:** Agents must generate competing hypotheses that span different conceptual layers. Explanations must not all come from the same domain (e.g., all UI tweaks). They must span categories such as: Visibility, Value Ambiguity, Trust, Setup Effort, Segment Mismatch, and Organizational/Architecture Constraints.
+* **Diagnosis Before Hypothesis:** Agents must first localise the failure, define affected segments, and articulate rival diagnoses before proposing a specific hypothesis or experiment.
+* **Test for Counterfactual Strength:** An agent should only elevate a hypothesis if it passes the counterfactual test: *If this latent condition were different, would the outcome have materially changed?*
+* **Test for Recurrence Leverage:** Agents must prioritize solutions that break the chain of failure systemically, rather than merely patching the local instance.
+
+---
+
+### 3. The "Six Question" Output Gate
+No matter the specific tasks of the individual agents in the train, the final orchestrated output/recommendation provided to the user MUST explicitly resolve these six questions. **Enforced by Agent 13 (Prioritisation).** The Orchestrator agent must block final output until these are satisfied:
+
+1. **The Observation:** What is the precise, uninterpreted data/trace?
+2. **The Rivalry:** What are the top three rival explanations (spanning different causal classes)?
+3. **The Counterfactual:** Which explanation has the strongest counterfactual impact?
+4. **The Leverage:** Which explanation offers the most recurrence leverage (systemic fix vs. local patch)?
+5. **The Falsification:** What specific evidence or metric trace would falsify our favored explanation?
+6. **The Experiment Constraint:** (If proposing an experiment) How does the proposed experiment specifically discriminate *between* the rival explanations, rather than just testing a single solution?

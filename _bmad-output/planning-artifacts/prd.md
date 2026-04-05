@@ -8,8 +8,10 @@ classification:
   complexity: medium
   projectContext: brownfield
 workflowType: 'prd'
-lastEdited: '2026-03-30'
+lastEdited: '2026-04-04'
 editHistory:
+  - date: '2026-04-04'
+    changes: 'Agent 20 made diagnosis-dependent. /inspiration-loop now requires outputs/diagnosis/diagnosis.json — halts if absent. FR40, FR41, J6, and Phase 3 trigger updated to reflect dependency. diagnosis.json is primary input; signals.md is optional context only.'
   - date: '2026-03-09'
     changes: 'Phase 1 = Intelligence Loop via Domo MCP (no screenshots). Phase 2 = Action Layer (GitHub + Jira). Added Feedback Intelligence, dataset/dashboard/card registry, hypothesis dedup, PII policy, 10 data access ground rules.'
   - date: '2026-03-09'
@@ -30,10 +32,11 @@ editHistory:
 
 Two complementary loops for SEA ecommerce PMs across all KPIs and markets (SG, MY, AU, NZ, PH, HK, TH, ID):
 
-**Intelligence Loop (Phase 1 — active):** 3-step diagnostic loop.
+**Intelligence Loop (Phase 1 — active):** 4-step diagnostic loop.
 1. **Signal** — query configured Domo KPI datasets; surface which metrics moved, where, by how much
-2. **Triangulate** — two parallel sub-steps: (2a) Domo feedback datasets for corroborating voice-of-customer evidence; (2b) independent code review to map the current implementation and design A/B experiments
-3. **Prioritise** — score and rank experiments by confidence × impact × scope; PM approves which advance
+2. **Diagnose** — two parallel sub-steps: (2a) Domo feedback datasets for corroborating voice-of-customer evidence; (2b) independent code review to localise the current implementation and map mechanisms
+3. **Hypothesise** — convert the favored diagnosis into rival-tested, falsifiable hypotheses and A/B experiment designs
+4. **Prioritise** — score and rank experiments by confidence × impact × scope; PM approves which advance
 
 **Inspiration Loop (Phase 3 — active):** PM-triggered ideation loop that produces prototype bets.
 1. **Scout** — load Agent 10 signals (what's broken) + browse SEA frontends (what we have today) + scoped market scan (what's possible)
@@ -41,7 +44,7 @@ Two complementary loops for SEA ecommerce PMs across all KPIs and markets (SG, M
 3. **Classify** — bet classified by type (pain / shine / pain+shine); drives downstream loop investment
 4. Downstream: prototype builder → launch validator → fit tracker (agents 22–24, in design)
 
-Both loops feed Agent 13: the Intelligence Loop provides code-grounded experiment designs; the Inspiration Loop provides market context and PM odds as optional enrichment for scoring and tiebreaking.
+Both loops feed Agent 13: the Intelligence Loop provides a diagnosis artifact plus code-grounded experiment designs; the Inspiration Loop provides market context and PM odds as optional enrichment for scoring and tiebreaking.
 
 Every gate is human-approved. Domo evidence absence is a hard stop — the system halts and asks, it does not infer. Phase 2 adds the action layer (GitHub effort estimation + Jira story creation) once Phase 1 is proven.
 
@@ -64,10 +67,14 @@ PM triggers /intelligence-loop
 │  agent           │   │  agent                     │
 │  Step 2a         │   │  Step 2b                   │
 │  Domo feedback   │   │  Independent code review   │
-│  Confluence UXR  │   │  Journey map + A/B design  │
+│  Confluence UXR  │   │  Journey map + mechanism   │
 └───┬──────────────┘   └────────────┬──────────────┘
     └────────────────┬───────────────┘
-                     │  *** PM GATE — approve experiments ***
+           │  outputs/diagnosis/diagnosis.json
+       ┌─────────▼──────────┐
+       │ diagnosis artifact │  Rival diagnoses + favored diagnosis
+       └─────────┬──────────┘
+           │  *** PM GATE — approve experiments ***
                      │
            ┌─────────▼──────────┐        outputs/inspiration/
            │  13-prioritisation │ ◄──── bet-log.json (optional
@@ -145,11 +152,12 @@ PM triggers /inspiration-loop
 | Step | Action | Source |
 |---|---|---|
 | 1. Signal | Query registered KPI datasets, pages, and cards; extract metric movement by market/platform | Domo MCP (dataset + page + card registry) |
-| 2a. Feedback triangulation | Check registered feedback datasets for corroborating voice-of-customer evidence; then check Confluence UX research | Domo feedback (primary) → Confluence UXR (secondary, skip if absent) |
-| 2b. Independent code review | Map the current FE/BE journey for each hypothesis; read targeted code; identify mechanism; propose A/B experiment design; synthesise emergent hypotheses from branch conditions and feature flags | Local codebase (PM selects repos) |
-| 3. Prioritise | Dedup hypotheses; score by confidence × impact × scope; PM approves which experiments advance to Jira | PM gate |
+| 2a. Feedback triangulation | Check registered feedback datasets for corroborating voice-of-customer evidence; then check Confluence UX research; contribute evidence to diagnosis | Domo feedback (primary) → Confluence UXR (secondary, skip if absent) |
+| 2b. Independent code review | Map the current FE/BE journey for each diagnosis candidate; read targeted code; identify mechanism; synthesise emergent hypotheses from branch conditions and feature flags | Local codebase (PM selects repos) |
+| 3. Hypothesise | Build diagnosis artifact; convert favored diagnosis into falsifiable hypotheses and A/B experiment designs | Local outputs + PM gate |
+| 4. Prioritise | Dedup hypotheses; score by confidence × impact × scope; PM approves which experiments advance to Jira | PM gate |
 
-Steps 2a and 2b run in parallel after the Step 1 PM gate. Both feed Agent 13.
+Steps 2a and 2b run in parallel after the Step 1 PM gate. Both feed a shared diagnosis artifact, which then feeds Agent 13.
 
 **Output:** Ranked, experiment-ready hypothesis list with Jira stories and Confluence summary
 
@@ -163,7 +171,7 @@ Steps 2a and 2b run in parallel after the Step 1 PM gate. Both feed Agent 13.
 
 ### Phase 3 — Inspiration Loop (active)
 
-**Trigger:** PM runs `/inspiration-loop`. Independent of Intelligence Loop cadence — can be triggered any time.
+**Trigger:** PM runs `/inspiration-loop` after the Intelligence Loop diagnosis stage is complete (`outputs/diagnosis/diagnosis.json` must exist). Depends on diagnosis artifact — cannot run standalone.
 
 | Step | Agent | Action | Output |
 |---|---|---|---|
@@ -205,11 +213,14 @@ If no Domo feedback evidence found → surfaces gap with options; PM decides bef
 **Step 2b — Independent code review (parallel)**
 PM confirms which repos and funnel scope to survey.
 System maps the current FE+BE journey: locates entry/exit points, traces step-by-step flow, notes branch conditions and feature flags.
-For each hypothesis, reads targeted code at the relevant journey step. Extracts current behaviour (descriptions only — no raw code). Checks for existing A/B experiment flags.
-Synthesises emergent hypotheses from branch conditions, feature flags, and fragility notes. PM approves emergent hypotheses before experiment design proceeds.
-Produces one A/B test design per hypothesis with Confidence/Impact/Scope scores from code evidence.
+For each diagnosis candidate, reads targeted code at the relevant journey step. Extracts current behaviour (descriptions only — no raw code). Checks for existing A/B experiment flags.
+Synthesises emergent diagnosis candidates and mechanism notes from branch conditions, feature flags, and fragility notes. PM approves emergent diagnoses before experiment design proceeds.
 
-**Step 3 — Prioritise**
+**Step 3 — Diagnose then hypothesise**
+System combines Step 2a and 2b outputs into a diagnosis artifact: observation, localisation, affected segments, rival diagnoses, evidence matrix, favored diagnosis, and falsification criteria.
+Only after favored diagnosis is explicit does the system propose one A/B test design per hypothesis with Confidence/Impact/Scope scores from code evidence.
+
+**Step 4 — Prioritise**
 Hypothesis dedup runs — suppresses any hypothesis already active/actioned this cycle for same signal + segment.
 System scores experiments: Confidence (code review) × Impact (code + signal severity) × Scope (SP, inverted); presents full ranked signal→hypothesis→experiment table.
 PM approves which experiments advance to Jira stories.
@@ -234,7 +245,7 @@ During Step 2b, agent 12 finds a failure mechanism in the code that was not surf
 ### J6: PM — Inspiration Loop (Happy Path)
 
 **Step 1 — Scout (Agent 20)**
-PM triggers `/inspiration-loop`. Agent 20 checks cycle-state for in-progress run (resume or fresh). Loads Agent 10 `signals.md` — identifies primary signal domain (largest confirmed movement). Browses the relevant SEA frontend (sephora.sg, .my, .com.au, or .co.th) to observe current state in the signal's funnel area. Runs scoped web search for competitor/industry signals in the same domain. Surfaces combined brief to PM.
+PM triggers `/inspiration-loop`. Agent 20 requires `outputs/diagnosis/diagnosis.json` — halts if absent. Reads the diagnosis artifact to understand what is broken, where, and why. Checks cycle-state for in-progress run (resume or fresh). Browses the relevant SEA frontend (sephora.sg, .my, .com.au, or .co.th) scoped to the diagnosed failure area. Runs scoped market scan in the same domain. Surfaces combined brief grounded in the diagnosis to PM.
 
 **PM Gate 1 — Pre-mortem + Prototype Idea**
 Agent 20 surfaces 2–3 failure scenarios grounded in the brief. PM confirms one (or provides their own). Agent 20 offers 3 prototype directions; PM selects or narrows. PM provides target metric and confidence odds. Agent 20 records fully-populated bet entry in `bet-log.json` and updates `cycle-state.json`.
@@ -342,7 +353,7 @@ Exclusion enforced at SQL SELECT layer. Unverified schema → query halts, human
 
 ## Innovation Patterns
 
-- **3-step intelligence loop** — Signal → Triangulate → Prioritise maps directly to how a PM thinks; no translation layer between tool output and leadership conversation
+- **4-step intelligence loop** — Signal → Diagnose → Hypothesise → Prioritise keeps observation, explanation, and experiment design distinct; no collapse from signal straight into solutioning
 - **Dataset-agnostic signal detection** — any KPI from config registry; no hardcoded metrics; loop adapts to whichever domain KPI the PM owns
 - **Domo-first triangulation** — feedback datasets (primary) before Confluence (secondary); each source has defined precedence and skip behaviour; no ambiguity about what gates progression
 - **Memory-first sustainability** — findings pre-computed weekly; system reads store before querying Domo; redundant API calls eliminated
@@ -398,7 +409,10 @@ Exclusion enforced at SQL SELECT layer. Unverified schema → query halts, human
 - FR23: PM can park loop pending evidence or analyst input
 - FR24: PM can resume parked or interrupted loop; interrupted loops detected from cycle state on next run
 
-### Experiment Prioritisation
+### Diagnosis & Experiment Prioritisation
+- FR25a: Build a diagnosis artifact between signal review and prioritisation with explicit observation, localisation, affected segments, rival diagnoses, evidence matrix, favored diagnosis, and falsification criteria
+- FR25b: Require at least three rival diagnoses spanning different causal classes before hypothesis design proceeds
+- FR25c: Block experiment design when no favored diagnosis is stated or when falsification criteria are missing
 - FR25: Score experiments by Confidence (from code review) × Impact (code + signal severity) × Scope (SP, inverted); priority score = C × I × S (max 27)
 - FR26: Rank experiments; surface full signal→hypothesis→experiment chain with scores; present ranked table to PM
 - FR27: PM reviews and approves which experiments advance to Jira story creation
@@ -412,7 +426,7 @@ Exclusion enforced at SQL SELECT layer. Unverified schema → query halts, human
 - FR33: Operator registers repos in `config/repos.yml` (metadata) and `config/repos.local.yml` (local paths, git-ignored); agent 12 reads only registered repos at PM-confirmed paths
 
 ### Loop State & Memory
-- FR34: Track loop state across stages (signal → triangulation → prioritisation)
+- FR34: Track loop state across stages (signal → diagnosis → hypothesis → prioritisation)
 - FR35: Store approved hypotheses and gate decisions in persistent cycle state file; reset monthly
 - FR36: Update designated Confluence page with loop output per run
 - FR37: Append to persistent ranked-hypotheses history and findings store — never overwrite
@@ -421,8 +435,8 @@ Exclusion enforced at SQL SELECT layer. Unverified schema → query halts, human
 
 ### Inspiration Loop (Phase 3)
 
-- FR40: PM triggers `/inspiration-loop`; Agent 20 checks `cycle-state.json` for in-progress run and surfaces resume/fresh choice before proceeding
-- FR41: Agent 20 reads Agent 10 `signals.md`; if absent, surfaces options (re-run intelligence loop or proceed without); if stale beyond `signal_staleness_days`, surfaces staleness and waits for PM decision
+- FR40: PM triggers `/inspiration-loop`; Agent 20 requires `outputs/diagnosis/diagnosis.json` to exist — if absent, halts with: "Run the Intelligence Loop diagnosis stage first." No resume/fresh choice until diagnosis artifact is present. Agent 20 checks `cycle-state.json` for in-progress run only after diagnosis is confirmed.
+- FR41: Agent 20 reads `outputs/diagnosis/diagnosis.json` as primary input (what is broken, failure surface, mechanism, affected segments). Agent 10 `signals.md` is loaded as optional context only. If diagnosis is stale beyond `signal_staleness_days`, surfaces staleness and waits for PM decision.
 - FR42: Agent 20 browses the SEA frontend area corresponding to the primary signal domain (sephora.sg / .my / .com.au / .co.th); uses visible UI only — no source code inspection; documents only what is visibly present; if inaccessible, records "not accessible" and continues
 - FR43: Agent 20 runs a scoped web search for the primary signal domain; every market scan claim must cite a source URL; if no results, records "No market signals found" — no fabrication
 - FR44: Agent 20 surfaces the combined brief (KPI signals + current state + market scan) to PM before Gate 1; posts to Teams `inspiration_signal_ready` if enabled
@@ -461,3 +475,30 @@ Exclusion enforced at SQL SELECT layer. Unverified schema → query halts, human
 - NFR15: Findings refreshed within 24 hours of weekly trigger for all registered datasets
 - NFR14: Signal threshold defined in config — not hardcoded in agent logic
 - NFR15: All dataset insights derived from SQL aggregations; verbatim capped at configured sampling maximum — no raw rows to LLM
+
+
+
+flowchart TB
+    %% Primary execution path
+    A[Step 1<br/>Detect meaningful business change<br/>from KPI data]:::blue --> B{Checkpoint A<br/>Human confirms the problem is worth exploring}:::red
+    B --> C1[Step 2a<br/>Collect customer evidence<br/>reviews, support signals, UX notes]:::orange
+    B --> C2[Step 2b<br/>Inspect product behavior<br/>map journey and failure points]:::orange
+    C1 --> D[Step 3<br/>Form testable options<br/>score by confidence, impact, effort]:::green
+    C2 --> D
+    D --> E{Checkpoint B<br/>Human approves what to run}:::red
+    E --> F[Step 4<br/>Track trend over time<br/>highlight ignored high-value items]:::purple
+    E --> G[Step 5 (when maturity is proven)<br/>Create delivery-ready engineering work]:::gray
+
+    %% Idea generation path that enriches prioritization
+    H[Parallel idea discovery path<br/>scan market patterns and current experience]:::teal --> I{Checkpoint C<br/>Human picks a scenario + bet}:::red
+    I --> J[Classify opportunity type<br/>fix pain, create delight, or both]:::teal
+    J --> K[Store bet context<br/>target metric + confidence]:::teal
+    K --> D
+
+    classDef blue fill:#dbeafe,stroke:#1d4ed8,color:#1e3a8a,stroke-width:2px;
+    classDef orange fill:#ffedd5,stroke:#ea580c,color:#7c2d12,stroke-width:2px;
+    classDef green fill:#dcfce7,stroke:#16a34a,color:#14532d,stroke-width:2px;
+    classDef red fill:#fee2e2,stroke:#dc2626,color:#7f1d1d,stroke-width:2px;
+    classDef purple fill:#ede9fe,stroke:#7c3aed,color:#4c1d95,stroke-width:2px;
+    classDef gray fill:#e5e7eb,stroke:#4b5563,color:#111827,stroke-width:2px;
+    classDef teal fill:#ccfbf1,stroke:#0f766e,color:#134e4a,stroke-width:2px;

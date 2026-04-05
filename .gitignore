@@ -24,13 +24,6 @@ config/atlassian.team.yml
 # Local repo paths — personal clone locations, never commit
 config/repos.local.yml
 
-# Screenshot watch folder — contents are transient (deleted after processing)
-inputs/screenshots/*.png
-inputs/screenshots/*.jpg
-inputs/screenshots/*.jpeg
-inputs/screenshots/*.gif
-inputs/screenshots/*.webp
-
 # Node dependencies
 node_modules/
 package-lock.json
@@ -42,6 +35,12 @@ outputs/
 domo-mcp-server/dist/
 domo-mcp-server/node_modules/
 
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+
 # Temp files
 .claude/tmp-screenshots/
+.tmp/
 *.log

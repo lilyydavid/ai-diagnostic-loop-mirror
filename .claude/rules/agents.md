@@ -25,3 +25,16 @@ Each `SKILL.md` should include:
 ## Output files
 
 All agent outputs go under `outputs/<agent-name>/`. Overwrite pipeline context files on each run. Never overwrite history/append-only files — only append.
+
+### Canonical overwrite/append list
+
+**Overwrite each run:**
+`pipeline-context.md`, `validation-hypotheses.md`, `lno.md`, `experiment-designs.json`, `experiment-designs.md`, `ranked-hypotheses.md`, `needs-spike.md`, `signal-trend.json`, `trend-report.md`, `cycle-state.json`
+
+**Append only — never overwrite:**
+`metrics-history.json`, `findings-store.json`, `ranked-hypotheses.json`, `bet-log.json`
+
+### Stakeholder output rules
+
+- No source attribution in stakeholder-facing Confluence pages.
+- Suspicious metrics (YoY >50% with no known cause, value = 0%, identical across all segments) go to Data Quality Notes only — excluded from all tables and risk register. Use `execution/flag_suspicious_metrics.py` for deterministic flagging.

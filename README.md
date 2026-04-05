@@ -107,8 +107,8 @@ config/
   repos.yml        # Repo metadata (committed)
   repos.local.yml  # Local clone paths (git-ignored)
 domo-mcp-server/   # Domo MCP server source (build before use)
-inputs/
-  scope-intake/    # PM scope intake files for Agent 13
+directives/        # SOPs for execution scripts and operational procedures
+execution/         # Deterministic Python scripts (DOE Layer 3)
 _bmad-output/
   planning-artifacts/  # PRD, architecture, product brief
 ```
@@ -136,6 +136,7 @@ _bmad-output/
 - **Aggregation-first** — no raw rows to the LLM; SQL aggregates at DB layer; verbatim sampled to configured max
 - **PII exclusion at query layer** — enforced in SQL SELECT; unverified schema = query halts
 - **Memory-first** — findings store read before querying Domo; re-query only when absent or stale
+- **Context-budgeted orchestration** — agents load directive + script + active outputs first, then expand only when blocked (see `directives/context_window_budget.md`)
 - **HIL at every gate** — PM approves at signal review, evidence confirmation, and prioritisation
 
 ---

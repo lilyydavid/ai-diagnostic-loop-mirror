@@ -100,6 +100,327 @@ An AI-orchestrated growth engineer co-pilot that:
 
 ---
 
+
+## Success Metrics
+
+### User Success — Priya (Platform PM)
+
+Success for the PM is defined by two outcomes: completing the loop reliably, and
+seeing real KPI recovery as a result. The tool works when Priya doesn't have to
+think about the process — she just follows the flow and a sprint-ready ticket emerges.
+
+**Loop Completion:**
+- At least 1 completed growth loop (alert → Jira ticket) per sprint
+- Target: achieved in ≥80% of sprints
+
+**Trigger-to-Ticket Conversion:**
+- ≥40% of triggered loops reach Jira ticket creation
+- Reflects signal quality and hypothesis strength, not just system activity
+
+**Domain Recovery:**
+- Measurable conversion rate improvement attributable to a sprint action
+  that originated from a completed loop
+- Measurement window: within 1 month of ticket delivery
+- Attribution method: compare pre/post KPI trajectory for the targeted
+  market/platform segment
+
+---
+
+### Business Objectives
+
+**1. Leadership Integration**
+The flywheel becomes a standing input to monthly tech business meetings — Marcus
+and leadership reference the hypothesis pipeline and domain health signal, replacing
+ad-hoc firefighting conversations with structured, evidence-grounded briefings.
+
+**2. PM Adoption**
+The loop expands beyond the pilot (one PM, one domain KPI) to other domain PMs
+running their own growth loops. Each new PM running the loop represents a validated
+proof point for AI agent adoption at scale.
+
+**3. Organisational Learning**
+Completed loops accumulate as institutional memory — hypotheses tested, evidence
+gathered, outcomes measured. The system compounds in value over time.
+
+---
+
+### Key Performance Indicators
+
+| KPI | Target | Timeframe | Type |
+|---|---|---|---|
+| Completed loops per sprint | ≥1 | Per sprint | Leading |
+| Sprint loop completion rate | ≥80% of sprints | Rolling 3 months | Leading |
+| Trigger-to-ticket conversion rate | ≥40% | Rolling 3 months | Leading |
+| Post-delivery KPI recovery | Measurable improvement | Within 1 month of delivery | Lagging |
+| Leadership meeting references to loop output | Monthly (consistent) | From Month 2 | Adoption |
+| Additional PMs running the loop | ≥2 new PMs | Within 6 months | Expansion |
+
+---
+
+### What We Are Not Measuring
+
+- **Ticket volume for its own sake** — more tickets is not better; quality and
+  conversion to sprint action matter
+- **Time spent in the tool** — success is completing the loop efficiently, not
+  engagement time
+- **Hypothesis quantity** — one strong, evidence-grounded hypothesis beats five
+  weak ones
+
+---
+
+## MVP Scope
+
+### MVP Definition: Intelligence Loop (Phase 1 — Live)
+
+The MVP is the full PM-triggered Intelligence Loop: the system detects KPI
+signal from Domo, triangulates with qualitative feedback, maps the relevant
+engineering journey, reads targeted code, proposes and scores A/B experiment
+designs, ranks them by priority, and creates sprint-ready Jira tickets —
+all with PM approval gates at each step.
+
+Phase 1 does not require screenshots and has no dependency on GitHub MCP.
+Code reading is done directly from local repo paths configured by the PM.
+
+---
+
+### Core Features (Phase 1 — Intelligence Loop)
+
+**1. KPI Signal Detection (Agent 10)**
+Agent queries registered Domo datasets and surfaces meaningful metric
+movements by market and platform. Weak signals are noted but do not
+trigger a full loop. PM reviews the signal report and confirms which
+movements to investigate before the loop continues.
+
+**2. Feedback Triangulation (Agent 11)**
+Agent queries Domo feedback datasets (app reviews, Love Meter, CS tickets,
+search terms) and Jira-based UX research (UXR project, Observation type)
+for qualitative signals corroborating or challenging the detected movement.
+Writes findings and segment cuts for Agent 12 to consume. Memory-first:
+findings store is checked before querying Domo.
+
+**3. Journey Mapping + Code Reading (Agent 12)**
+For each PM-confirmed hypothesis, Agent 12 maps the current FE+BE journey
+for the relevant funnel scope before reading hypothesis-specific code.
+Journey mapping identifies entry/exit points, branch conditions, platform
+guards, and active feature flags — giving the agent structural context
+before targeted reading begins.
+
+After reading hypothesis-specific code, Agent 12 synthesises emergent
+hypotheses: additional failure mechanisms found in branch conditions,
+feature flags, fragility notes, or Agent 11 signals not covered by the
+confirmed list. Emergent hypotheses are presented to the PM at a gate
+before experiment design proceeds.
+
+Each hypothesis produces an A/B test design: control, variant, segment
+scope, SP estimate, success metric, and blast radius. Compound hypotheses
+are atomically decomposed — one testable change per design.
+
+A grep_anchor verification pass runs before writing outputs: every file
+cited must have a specific identifier (function name, method signature,
+constant) that was actually observed and can be re-confirmed with Grep.
+
+**4. Scoring and Ranking (Agent 13)**
+Experiments are scored on Confidence (from Agent 12 code evidence) ×
+Impact (code path centrality + signal severity) × Scope (SP estimate,
+inverted). PM sees a ranked table of sprint candidates, backlog candidates,
+pending data items, and items needing engineering spike.
+
+Optional enrichment: if Agent 20 (inspiration loop) has run within the
+staleness window, its market context and PM odds are loaded and can
+break ties at equal priority scores.
+
+**5. Code Grounding Check (Agent 13 — hard gate)**
+Before any Jira story is created, Agent 13 re-verifies every code claim
+from Agent 12 against the read audit log and re-runs Grep for each
+grep_anchor. Stories where code claims cannot be verified are hard-blocked
+and routed to a needs-spike file. PM is informed of blocked stories before
+the agent proceeds with verified ones.
+
+**6. Jira Story Creation (Agent 13)**
+For PM-approved experiments that pass the code grounding check, Agent 13
+creates sprint-ready Jira stories under the configured epic. A dedup check
+runs first: carry-forward hypotheses (seen in prior cycles) update an
+existing open ticket via comment rather than creating a new one. New
+hypotheses are checked by JQL for any manually created tickets covering
+the same issue.
+
+Compound hypotheses are split into atomic sub-stories with one SP estimate,
+one Proposed Change, and one set of Acceptance Criteria each.
+
+**7. Trend Escalation (Agent 15)**
+After Agent 13, the trend agent tracks confidence and priority scores
+across cycles. Hypotheses with high priority scores that remain unactioned
+across ≥2 cycles accumulate priority debt and are escalated to PM via
+a Confluence brief. No GMV assumptions.
+
+**8. Baseline Logging**
+At Jira story creation, the system records the specific metric, segment,
+market, and baseline value at time of creation. Recovery is measured at
+the same granularity — not at aggregate conversion rate level. Attribution
+is credible only when the exact problematic metric recovers post-action
+within 1 month of delivery.
+
+---
+
+### Out of Scope for Phase 1
+
+| Feature | Rationale | Phase |
+|---|---|---|
+| Screenshot-based funnel monitoring | Phase 2 — growth-engineer orchestrator | Phase 2 |
+| GitHub MCP effort estimation | Phase 2 — requires GitHub MCP integration | Phase 2 |
+| Market intel agent (web + social scan) | Phase 2 — growth-engineer orchestrator | Phase 2 |
+| Session vs. user view toggling (Marcus dashboard) | Built after PM loop is proven | Phase 3 |
+| Multi-PM support | Pilot with one PM, one domain KPI | Phase 3 |
+| High-complexity / architectural tickets | Out of scope by design — quick wins only | Never (by design) |
+
+---
+
+### Phase 2 Unlock Condition
+
+Phase 2 (Action Layer — growth-engineer orchestrator) unlocks when:
+
+| Signal | Threshold |
+|---|---|
+| Intelligence Loop cycles completed | ≥3 full loops |
+| Hypotheses actioned per loop | ≥2/3 per loop |
+
+Both conditions must be met. If after 5+ months 3 loops have not completed,
+this is a signal the trigger mechanism needs fixing — not a reason to force
+expansion to Phase 2.
+
+---
+
+### Future Vision
+
+**Phase 2 — Action Layer: Growth Engineer Orchestrator**
+Adds the screenshot-based funnel monitoring layer, web + social market intel
+scan, GitHub MCP effort estimation, and the full growth-engineer workflow
+(Discovery → Validation → Delivery). The PM drops screenshots in a watch
+folder and triggers `/growth-engineer` rather than manually pulling Domo.
+Agents 05–09 orchestrate the pipeline with HIL gates at every decision point.
+
+**Phase 3 — Multi-PM Flywheel + Leadership Signal**
+Expand the loop to other domain PMs and their KPIs. Build the Marcus view:
+hypothesis pipeline, domain health, session vs. user view bridging. Feed
+completed loops into monthly tech business meeting artefacts. The flywheel
+becomes an organisational capability, not a single PM tool.
+
+**Long-term — Regional Scale**
+The loop model — evidence-grounded hypothesis → sprint action → targeted
+metric recovery — becomes replicable across other Sephora markets and
+product domains.
+
+---
+
+## Feedback Intelligence Layer
+
+### Overview
+
+A configurable, token-sustainable data intelligence capability embedded in
+Step 3 (Triangulate) of the growth loop. The agent queries registered Domo
+datasets on a weekly basis, extracts aggregated quant and qual signals, and
+stores key findings in a memory store — so that when a hypothesis loop
+triggers, pre-computed insights are immediately available for triangulation
+without redundant querying.
+
+### Registered Dataset Types
+
+| Dataset Type | Signal Character |
+|---|---|
+| App store reviews | Qualitative (verbatim) + quantitative (rating, topic, volume) |
+| Love Meter (NPS) | Quantitative (score trend) + qualitative (open text) |
+| Domain KPI | Quantitative (metric values by market/platform) |
+| Skincredible feedback | Qualitative (verbatim) — product/experience feedback |
+| Customer service tickets | Qualitative (issue category, verbatim) + quantitative (volume) |
+
+Dataset IDs are configured in a registry file — never hardcoded. New
+datasets are added via config without changes to agent logic.
+
+### Token Sustainability Model
+
+- **Memory-first:** Before querying Domo, agent checks findings store for
+  an existing result covering the requested dataset and time window. Only
+  re-queries when findings are stale or absent.
+- **Aggregation-first:** All queries run as SQL aggregations at the
+  database layer. Raw row-level data is never passed to an LLM.
+- **Verbatim sampling:** Qualitative text fields are sampled to a defined
+  maximum of representative rows — not full dataset dumps.
+- **Weekly refresh cadence:** Findings store updated weekly regardless of
+  whether a hypothesis loop is active, so insights are pre-loaded and
+  ready when a loop triggers.
+
+### PII Policy
+
+The following fields are classified as PII and are excluded at the SQL
+SELECT layer. The agent never retrieves them, regardless of dataset schema:
+
+| Field | Classification |
+|---|---|
+| `user_id` | PII — excluded |
+| `account_number` | PII — excluded |
+| `card_number` | PII — excluded |
+| `payment_details` / transaction data | PII — excluded |
+| `address` (billing, shipping, any) | PII — excluded |
+| `password` / password hash | PII — excluded |
+| `login` / username / email / phone | PII — excluded |
+| Name | PII — excluded |
+
+If a dataset schema cannot be verified as PII-safe before querying, the
+agent halts and flags for human review. PII exclusion is enforced at
+both the query layer and the output layer — no PII may appear in the
+findings store, Confluence pages, or Jira tickets.
+
+---
+
+## Data Access Ground Rules
+
+All agents accessing external data sources must comply with the following
+governance rules without exception:
+
+1. **Least Privilege** — Agents only access datasets explicitly registered
+   in config. No ad-hoc dataset discovery or querying outside the approved
+   list.
+
+2. **Read-Only** — Agents may never write to, modify, or delete data in
+   any source system. Query only.
+
+3. **Aggregation-First** — Raw row-level data is never passed to an LLM.
+   SQL aggregations run at the database layer first. Verbatim text sampled
+   to a defined maximum.
+
+4. **Scoped Date Windows** — Queries always include a date range filter.
+   No unbounded SELECT * — agents query only the window relevant to the
+   current cycle (e.g. rolling 90 days).
+
+5. **Schema Verification Before Query** — Before querying a new dataset,
+   the agent inspects its schema. If PII columns are detected, the query
+   halts and flags for human review before proceeding.
+
+6. **Memory-First / No Redundant Queries** — If a finding for a dataset
+   and time window already exists in the findings store and is not stale,
+   the agent uses it. No re-querying what has already been processed.
+
+7. **No Raw Data in Outputs** — Findings store, Confluence pages, and
+   Jira tickets contain only aggregated insights and anonymised verbatim.
+   No raw records surfaced downstream.
+
+8. **Human Approval for New Datasets** — Adding a new dataset ID to config
+   requires explicit human confirmation before the agent queries it for the
+   first time.
+
+9. **Fail-Safe on Access Error** — If a dataset query fails (auth error,
+   timeout, schema mismatch), the agent halts that data source gracefully,
+   logs the failure, and continues with available sources — never silently
+   skips or fabricates.
+
+10. **Purpose Limitation** — Data accessed for hypothesis triangulation
+    only. Agent outputs may not be repurposed for other uses (e.g.
+    marketing, profiling) without a new approval gate.
+
+
+
+
+
 ## Target Users
 
 ### Primary Users
@@ -231,302 +552,3 @@ sprint ticket — in a single guided session, without chasing engineers, analyst
 Confluence manually.
 
 ---
-
-## Success Metrics
-
-### User Success — Priya (Platform PM)
-
-Success for the PM is defined by two outcomes: completing the loop reliably, and
-seeing real KPI recovery as a result. The tool works when Priya doesn't have to
-think about the process — she just follows the flow and a sprint-ready ticket emerges.
-
-**Loop Completion:**
-- At least 1 completed growth loop (alert → Jira ticket) per sprint
-- Target: achieved in ≥80% of sprints
-
-**Trigger-to-Ticket Conversion:**
-- ≥40% of triggered loops reach Jira ticket creation
-- Reflects signal quality and hypothesis strength, not just system activity
-
-**Domain Recovery:**
-- Measurable conversion rate improvement attributable to a sprint action
-  that originated from a completed loop
-- Measurement window: within 1 month of ticket delivery
-- Attribution method: compare pre/post KPI trajectory for the targeted
-  market/platform segment
-
----
-
-### Business Objectives
-
-**1. Leadership Integration**
-The flywheel becomes a standing input to monthly tech business meetings — Marcus
-and leadership reference the hypothesis pipeline and domain health signal, replacing
-ad-hoc firefighting conversations with structured, evidence-grounded briefings.
-
-**2. PM Adoption**
-The loop expands beyond the pilot (one PM, one domain KPI) to other domain PMs
-running their own growth loops. Each new PM running the loop represents a validated
-proof point for AI agent adoption at scale.
-
-**3. Organisational Learning**
-Completed loops accumulate as institutional memory — hypotheses tested, evidence
-gathered, outcomes measured. The system compounds in value over time.
-
----
-
-### Key Performance Indicators
-
-| KPI | Target | Timeframe | Type |
-|---|---|---|---|
-| Completed loops per sprint | ≥1 | Per sprint | Leading |
-| Sprint loop completion rate | ≥80% of sprints | Rolling 3 months | Leading |
-| Trigger-to-ticket conversion rate | ≥40% | Rolling 3 months | Leading |
-| Post-delivery KPI recovery | Measurable improvement | Within 1 month of delivery | Lagging |
-| Leadership meeting references to loop output | Monthly (consistent) | From Month 2 | Adoption |
-| Additional PMs running the loop | ≥2 new PMs | Within 6 months | Expansion |
-
----
-
-### What We Are Not Measuring
-
-- **Ticket volume for its own sake** — more tickets is not better; quality and
-  conversion to sprint action matter
-- **Time spent in the tool** — success is completing the loop efficiently, not
-  engagement time
-- **Hypothesis quantity** — one strong, evidence-grounded hypothesis beats five
-  weak ones
-
----
-
-## MVP Scope
-
-### MVP Definition: Hypothesis Accelerator (Option C)
-
-The MVP is a focused slice of the full growth loop: PM brings a hypothesis,
-the system validates it with qualitative research and effort signals, and
-creates a sprint-ready Jira ticket. This removes the sharpest bottleneck
-today — the gap between a formed hypothesis and an actioned ticket — without
-requiring full automated monitoring infrastructure.
-
-The PM continues to perform metric monitoring and anomaly identification
-manually in this phase. The system takes over at the point where the
-hypothesis is formed.
-
----
-
-### Core Features
-
-**1. Hypothesis Intake**
-PM states a hypothesis with a target metric and segment (e.g., "iOS add-to-cart
-rate dropping in TH — suspected checkout friction"). System accepts this as the
-loop entry point.
-
-**2. Qualitative Validation**
-System searches the UX research Confluence space for evidence corroborating or
-challenging the hypothesis. If no evidence is found, the loop halts and the PM
-is required to backfill the missing context or provide evidence as a direct
-input before proceeding. Creating a ticket without evidence is not permitted —
-this is a hard gate, not an override.
-
-**3. Effort & Scope Gate**
-Before any ticket is created, the system assesses the effort level of the
-hypothesis. Only lightweight, quick-win hypotheses proceed to ticket creation.
-The assessment produces:
-- **Complexity:** Low / Medium / High (with confidence level)
-- **Type:** Frontend (FE) or Backend (BE)
-
-High-complexity hypotheses are flagged and returned to the PM with a note:
-"This hypothesis requires significant engineering scope and is not suitable
-for a quick-win ticket. Consider breaking it into a smaller testable change,
-or route it to a separate discovery process."
-
-Only Low and Medium complexity hypotheses proceed to ticket creation.
-This gate ensures the loop produces sprint-includable work — not architectural
-change requests that will stall in grooming.
-
-**4. Jira Ticket Creation**
-System creates a scoped, evidence-backed Jira story under the growth agent
-epic with PM approval. Ticket includes: hypothesis, evidence summary,
-complexity rating (Low/Medium), ticket type (FE/BE), target metric,
-and baseline value for recovery tracking.
-
-**5. Ticket Feedback Capture**
-At the point of ticket handoff to Dev, a lightweight feedback record is
-created: accept/reject + one-line reason. This makes the loop a learning
-system — rejection reasons feed back into hypothesis quality over time and
-help distinguish bandwidth constraints from ticket quality issues.
-
-**6. Minimal Baseline Logging**
-At ticket creation, the system logs:
-- The specific metric (e.g., iOS add-to-cart rate)
-- The specific segment (e.g., TH market)
-- The baseline value at time of ticket creation
-- The sprint the ticket entered
-
-Recovery is measured at the specific metric and segment level — not at
-aggregate conversion rate level. Attribution is credible only when the
-exact problematic metric recovers post-action, within 1 month of delivery.
-
----
-
-### Out of Scope for MVP
-
-| Feature | Rationale | Phase |
-|---|---|---|
-| Automated funnel monitoring | PM monitors manually in this phase | Option A (Phase 2) |
-| Market/platform anomaly detection | Requires monitoring layer | Option A (Phase 2) |
-| Session vs. user view toggling (Marcus dashboard) | Built after PM loop is proven | Phase 3 |
-| Multi-PM support | Pilot with one PM, one domain KPI | Phase 3 |
-| Multi-KPI support | Conversion rate loop only in MVP | Phase 2+ |
-| Automated loop triggering | PM-triggered only in MVP | Phase 2 |
-| High-complexity / architectural tickets | Out of scope by design — quick wins only | Never (by design) |
-
----
-
-### MVP Success Criteria (C → A Readiness Gate)
-
-The gate requires all of the following — but the time minimum is a floor,
-not a ceiling. If evidence is strong, expand early. If loops are taking
-longer than expected, investigate the trigger mechanism rather than
-forcing progression.
-
-| Signal | Threshold | Notes |
-|---|---|---|
-| Loops completed | ≥3 full loops (hypothesis → ticket → sprint) | Proves pipeline is repeatable |
-| Sprint inclusion rate | ≥2 of 3 tickets accepted by Dev | Proves ticket quality |
-| Targeted metric recovery | ≥1 measurable improvement on the logged metric/segment within 1 month of delivery | If recovery window is too tight, this gate can be deferred — the other three signals are sufficient to proceed |
-| Time minimum | ≥3 months from first loop | Floor only — don't wait if evidence is already strong |
-
-If after 5+ months 3 loops have not completed, this is a signal the
-hypothesis trigger mechanism itself needs fixing — not a reason to
-force expansion to Option A.
-
----
-
-### Future Vision
-
-**Phase 2 — Option A: Conversion Rate Flywheel**
-Add the monitoring layer (automated funnel signal detection, market/platform
-breakdown, anomaly identification) to the front of the loop. The PM is
-notified when signal is strong enough to trigger a loop — no manual
-monitoring required. Full 6-step automated loop with HIL gates at every
-decision point.
-
-**Phase 3 — Multi-PM Flywheel + Leadership Signal**
-Expand the loop to other domain PMs and their KPIs. Build the Marcus view:
-hypothesis pipeline, domain health, session vs. user view bridging. Feed
-completed loops into monthly tech business meeting artefacts. The flywheel
-becomes an organisational capability, not a single PM tool.
-
-**Long-term — Regional Scale**
-The loop model — evidence-grounded hypothesis → sprint action → targeted
-metric recovery — becomes replicable across other Sephora markets and
-product domains.
-
----
-
-## Feedback Intelligence Layer
-
-### Overview
-
-A configurable, token-sustainable data intelligence capability embedded in
-Step 3 (Triangulate) of the growth loop. The agent queries registered Domo
-datasets on a weekly basis, extracts aggregated quant and qual signals, and
-stores key findings in a memory store — so that when a hypothesis loop
-triggers, pre-computed insights are immediately available for triangulation
-without redundant querying.
-
-### Registered Dataset Types
-
-| Dataset Type | Signal Character |
-|---|---|
-| App store reviews | Qualitative (verbatim) + quantitative (rating, topic, volume) |
-| Love Meter (NPS) | Quantitative (score trend) + qualitative (open text) |
-| Domain KPI | Quantitative (metric values by market/platform) |
-| Skincredible feedback | Qualitative (verbatim) — product/experience feedback |
-| Customer service tickets | Qualitative (issue category, verbatim) + quantitative (volume) |
-
-Dataset IDs are configured in a registry file — never hardcoded. New
-datasets are added via config without changes to agent logic.
-
-### Token Sustainability Model
-
-- **Memory-first:** Before querying Domo, agent checks findings store for
-  an existing result covering the requested dataset and time window. Only
-  re-queries when findings are stale or absent.
-- **Aggregation-first:** All queries run as SQL aggregations at the
-  database layer. Raw row-level data is never passed to an LLM.
-- **Verbatim sampling:** Qualitative text fields are sampled to a defined
-  maximum of representative rows — not full dataset dumps.
-- **Weekly refresh cadence:** Findings store updated weekly regardless of
-  whether a hypothesis loop is active, so insights are pre-loaded and
-  ready when a loop triggers.
-
-### PII Policy
-
-The following fields are classified as PII and are excluded at the SQL
-SELECT layer. The agent never retrieves them, regardless of dataset schema:
-
-| Field | Classification |
-|---|---|
-| `user_id` | PII — excluded |
-| `account_number` | PII — excluded |
-| `card_number` | PII — excluded |
-| `payment_details` / transaction data | PII — excluded |
-| `address` (billing, shipping, any) | PII — excluded |
-| `password` / password hash | PII — excluded |
-| `login` / username / email / phone | PII — excluded |
-| Name | PII — excluded |
-
-If a dataset schema cannot be verified as PII-safe before querying, the
-agent halts and flags for human review. PII exclusion is enforced at
-both the query layer and the output layer — no PII may appear in the
-findings store, Confluence pages, or Jira tickets.
-
----
-
-## Data Access Ground Rules
-
-All agents accessing external data sources must comply with the following
-governance rules without exception:
-
-1. **Least Privilege** — Agents only access datasets explicitly registered
-   in config. No ad-hoc dataset discovery or querying outside the approved
-   list.
-
-2. **Read-Only** — Agents may never write to, modify, or delete data in
-   any source system. Query only.
-
-3. **Aggregation-First** — Raw row-level data is never passed to an LLM.
-   SQL aggregations run at the database layer first. Verbatim text sampled
-   to a defined maximum.
-
-4. **Scoped Date Windows** — Queries always include a date range filter.
-   No unbounded SELECT * — agents query only the window relevant to the
-   current cycle (e.g. rolling 90 days).
-
-5. **Schema Verification Before Query** — Before querying a new dataset,
-   the agent inspects its schema. If PII columns are detected, the query
-   halts and flags for human review before proceeding.
-
-6. **Memory-First / No Redundant Queries** — If a finding for a dataset
-   and time window already exists in the findings store and is not stale,
-   the agent uses it. No re-querying what has already been processed.
-
-7. **No Raw Data in Outputs** — Findings store, Confluence pages, and
-   Jira tickets contain only aggregated insights and anonymised verbatim.
-   No raw records surfaced downstream.
-
-8. **Human Approval for New Datasets** — Adding a new dataset ID to config
-   requires explicit human confirmation before the agent queries it for the
-   first time.
-
-9. **Fail-Safe on Access Error** — If a dataset query fails (auth error,
-   timeout, schema mismatch), the agent halts that data source gracefully,
-   logs the failure, and continues with available sources — never silently
-   skips or fabricates.
-
-10. **Purpose Limitation** — Data accessed for hypothesis triangulation
-    only. Agent outputs may not be repurposed for other uses (e.g.
-    marketing, profiling) without a new approval gate.

@@ -1,5 +1,10 @@
 {
   "permissions": {
+    "allow": [
+      "Bash(python3 execution/check_findings_cache.py --store outputs/feedback/findings-store.json --config config/domo.yml --signal-date 2026-04-04)",
+      "Bash(python3 execution/check_signals_staleness.py --signals-file outputs/signal-agent/signals.md --config config/atlassian.yml)",
+      "Bash(python3 execution/flag_suspicious_metrics.py --input .tmp/test-metrics.json --config config/domo.yml --output .tmp/test-flagged.json)"
+    ],
     "admins": [],
     "users": []
   }

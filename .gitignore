@@ -52,5 +52,6 @@ __pycache__/
 # Personal Claude settings
 .claude/settings.local.json
 
-# BMAD generated planning artifacts — regenerate from source
+# BMAD framework and generated artifacts — not project source
+_bmad/
 _bmad-output/

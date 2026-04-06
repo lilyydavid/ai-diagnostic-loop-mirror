@@ -1,4 +1,4 @@
-# product-experiments
+# AI diagnostic loop
 
 AI-assisted PM diagnostic tool for SEA ecommerce teams. Two complementary loops that turn KPI signals into ranked, experiment-ready hypotheses and prototype bets — across SG, MY, AU, NZ, PH, HK, TH, and ID.
 
@@ -22,22 +22,21 @@ LLMs handle decision-making. Scripts handle computation. This separation prevent
 
 4-step diagnostic pipeline triggered by `/intelligence-loop`.
 
-1. **Signal** (Agent 10) — queries Domo KPI datasets; surfaces which metrics moved, where, by how much; PM reviews and approves
+1. **Signal**  — queries Domo KPI datasets; surfaces which metrics moved, where, by how much; PM reviews and approves
 2. **Diagnose** — two parallel sub-steps:
-   - (2a) **Feedback** (Agent 11) — Domo feedback triangulation (app reviews, Love Meter, CS tickets) + Confluence UX research
-   - (2b) **Validation** (Agent 12) — independent codebase survey; localises the failure mechanism; designs A/B experiments
-3. **Prioritise** (Agent 13) — scores experiments C×I×S; PM approves; produces Jira stories + Confluence summary
+   - (2a) **Feedback** — DWH feedback triangulation (app reviews, NPS, CS tickets) + Confluence UX research
+   - (2b) **Validation** — independent codebase survey; localises the failure mechanism; designs A/B experiments
+3. **Prioritise**  — scores experiments C×I×S; PM approves; produces Jira stories + Confluence summary
 4. **Escalate** (Agent 15) — tracks priority debt; escalates persistently unactioned hypotheses
 
 ### Inspiration Loop
 
 PM-triggered ideation loop triggered by `/inspiration-loop`.
 
-1. **Scout** (Agent 20) — loads Agent 10 signals + browses SEA frontends + scoped market scan → PM Gate 1 (pre-mortem + prototype idea) → bet recorded with target metric and odds
-2. **Classify** (Agent 21, in design) — classifies bet as pain / shine / pain+shine
-3. Agents 22–24 (in design) — prototype builder → launch validator → fit tracker
+1. **Scout**  — loads signals + browses SEA frontends + scoped market scan → PM Gate 1 (pre-mortem + prototype idea) → bet recorded with target metric and odds
 
-Both loops feed Agent 13: the Intelligence Loop provides a diagnosis artifact plus code-grounded experiment designs; the Inspiration Loop provides market context and PM odds as optional enrichment for scoring.
+
+Both loops feed prioritise step: the Intelligence Loop provides a diagnosis artifact plus code-grounded experiment designs; the Inspiration Loop provides market context and PM odds as optional enrichment for scoring.
 
 ---
 
@@ -69,20 +68,11 @@ pip install -r requirements.txt
 ### 3. Configure MCP credentials
 
 Create `.mcp.json` (git-ignored). It must contain credentials for four MCP servers:
-- `mcp-atlassian` — Atlassian API token → https://id.atlassian.com/manage-profile/security/api-tokens
-- `domo-mcp` — Domo OAuth `client_id` + `client_secret`
-- `github` — GitHub PAT (scopes: `audit_log, repo`)
-- `chrome-devtools` — Chrome DevTools MCP (used by Inspiration Loop for frontend browsing)
 
 ### 4. Configure Atlassian targets
 
 Edit `config/atlassian.yml`:
 ```yaml
-space_name: "PI"
-page_id: "your-parent-page-id"
-growth_agent:
-  jira_project_key: "BAAPP"
-  epic_key: "BAAPP-461"
 ```
 
 For personal overrides (local page IDs, test epics):
@@ -91,11 +81,11 @@ cp config/atlassian.local.yml.example config/atlassian.local.yml
 ```
 `atlassian.local.yml` is git-ignored.
 
-### 5. Configure Domo sources
+### 5. Configure DWH sources
 
-Edit `config/domo.yml` — register all KPI datasets, pages, and cards before running the agent. Every source requires explicit registration before first query.
+Edit `config/dwh.yml` — register all KPI datasets, pages, and cards before running the agent. Every source requires explicit registration before first query.
 
-### 6. Configure local repo paths (Agent 12)
+### 6. Configure local repo paths 
 
 ```bash
 cp config/repos.local.yml.example config/repos.local.yml

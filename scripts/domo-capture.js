@@ -9,7 +9,7 @@
  * Saves screenshots to .claude/tmp-screenshots/funnel-weekly/<pageId>-<YYYY-MM-DD>.png
  *
  * Required env vars (inherited from shell or .env):
- *   DOMO_HOST        — e.g. sephora-sg.domo.com
+ *   DOMO_HOST        — e.g. your-instance.domo.com
  *   DOMO_USERNAME    — Domo login email
  *   DOMO_PASSWORD    — Domo login password
  *

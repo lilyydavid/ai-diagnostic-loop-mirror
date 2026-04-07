@@ -17,7 +17,7 @@ Reference for all MCP server connections — tool names, OAuth scopes, error han
 - Use for CQL search when mcp-atlassian search is insufficient
 
 ### github (`npx @modelcontextprotocol/server-github`)
-- Read access to `sephora-asia` org repos
+- Read access to configured org repos
 - Token scopes: `audit_log, repo`
 - Used by Agent 08 (github-reader) and Phase 2 action layer
 

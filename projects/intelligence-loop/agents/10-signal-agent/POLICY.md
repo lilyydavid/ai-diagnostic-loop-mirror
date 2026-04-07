@@ -25,11 +25,11 @@ PM triggers loop
 
 ## Output Contract
 
-### Confluence — Sephora Pulse update page (primary stakeholder output)
+### Confluence — Pulse update page (primary stakeholder output)
 
-Write signal report as a **child page** under the Sephora Pulse parent page via the deterministic script.
-Parent page ID: `64759660546`
-Parent URL: `https://sephora-asia.atlassian.net/wiki/spaces/PI/pages/64759660546/Sephora+Pulse+update`
+Write signal report as a **child page** under the Pulse parent page via the deterministic script.
+Parent page ID: loaded from `config/atlassian.yml` (`page_id`)
+Space key: loaded from `config/atlassian.yml` (`space_name`)
 
 **Content rules — apply before every write:**
 - Include: confirmed signals table, traffic mix table, funnel tables (session web/app, user-level, checkout), data quality notes
@@ -45,9 +45,9 @@ Step 2 — Run the script:
 ```bash
 python execution/write_confluence.py \
   --mode upsert \
-  --space PI \
-  --parent-id 64759660546 \
-  --title "Sephora Pulse — $(date +%Y-%m-%d)" \
+  --space <space_name from config/atlassian.yml> \
+  --parent-id <page_id from config/atlassian.yml> \
+  --title "Pulse — $(date +%Y-%m-%d)" \
   --body-file .tmp/pulse-body.md \
   --content-format wiki
 ```
@@ -59,7 +59,7 @@ If script exits non-zero:
 - Exit 2 (400): check title length and parent ID; fix and retry once.
 - Exit 3/4: config or input error — surface to PM.
 
-The parent page (`64759660546`) is never modified.
+The parent page (from `config/atlassian.yml`) is never modified.
 
 ### `outputs/signal-agent/signals.md`
 Internal record — overwrite each run. Mirrors Confluence content for pipeline handoff.
@@ -128,7 +128,7 @@ thresholds.suspicious_metric           # flag rules
 
 - Read: registered Domo KPI sources only (`kpi_pages`, `kpi_cards`, `kpi_datasets`)
 - Write: `outputs/signal-agent/` (pipeline handoff files)
-- Write: Confluence child pages under Sephora Pulse (parent ID `64759660546`) — signal report only; parent page never modified
+- Write: Confluence child pages under the configured Pulse parent (from `config/atlassian.yml`) — signal report only; parent page never modified
 - No writes to Jira or any feedback source
 
 ## Error Handling

@@ -1,9 +1,1 @@
 # TEAM OVERRIDE — copy to atlassian.team.yml and commit
-# Values here override config/atlassian.yml but are overridden by atlassian.local.yml.
-# Use this when a team runs the agent against a different Jira project or epic.
-
-# Example: growth team running against a separate project
-# growth_agent:
-#   jira_project_key: "GROW"
-#   epic_key: "GROW-1"
-#   epic_summary: "Growth Agent tasks — Growth Team"
